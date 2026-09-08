@@ -13,3 +13,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Product definition
+
+The agreed product definition lives in `docs/agents/product.md`; precise arithmetic and edge cases in `docs/agents/glossary.md`.
