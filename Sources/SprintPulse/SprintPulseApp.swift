@@ -12,7 +12,6 @@ struct SprintPulseApp: App {
     var body: some Scene {
         MenuBarExtra {
             PanelView(panel: panel)
-                .task { await panel.load() }
         } label: {
             Text(panel.menuBarLabel)
         }

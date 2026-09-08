@@ -13,6 +13,11 @@ final class PanelModel: ObservableObject {
     private let identity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
     private let baselineStore = BaselineStore()
 
+    init() {
+        // Read the reading at launch so the menu-bar item shows the number without a click.
+        Task { await load() }
+    }
+
     var menuBarLabel: String {
         guard let instrument else { return "Sprint Pulse" }
         // A neutral marker until the mascot (M3); the number is the instrument.
