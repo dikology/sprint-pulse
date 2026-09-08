@@ -1,0 +1,18 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "isLast": true,
+  "values": [
+    {
+      "id": 6003,
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/6003",
+      "state": "active",
+      "name": "Unestimated Issues Sprint",
+      "startDate": "2026-09-01T09:00:00.000+0000",
+      "endDate": "2026-09-12T17:00:00.000+0000",
+      "activatedDate": "2026-09-01T09:06:00.000+0000",
+      "originBoardId": 172,
+      "goal": "Unsized Issues scattered across the Flow States."
+    }
+  ]
+}

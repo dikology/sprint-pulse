@@ -1,0 +1,85 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 7,
+  "issues": [
+    {
+      "id": "96201",
+      "key": "UNE-1401",
+      "fields": {
+        "summary": "Rework the onboarding copy",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": null
+      }
+    },
+    {
+      "id": "96202",
+      "key": "UNE-1402",
+      "fields": {
+        "summary": "Chase down the intermittent decode failure",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": null
+      }
+    },
+    {
+      "id": "96203",
+      "key": "UNE-1403",
+      "fields": {
+        "summary": "Design review for the panel layout",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Review" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": null
+      }
+    },
+    {
+      "id": "96204",
+      "key": "UNE-1404",
+      "fields": {
+        "summary": "Waiting on a product answer about Dropped",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Need Info" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 3
+      }
+    },
+    {
+      "id": "96205",
+      "key": "UNE-1405",
+      "fields": {
+        "summary": "Old spike, closed without an estimate",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Done" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": null
+      }
+    },
+    {
+      "id": "96206",
+      "key": "UNE-1406",
+      "fields": {
+        "summary": "Abandoned experiment, never sized",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Cancelled" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": null
+      }
+    },
+    {
+      "id": "96207",
+      "key": "UNE-1407",
+      "fields": {
+        "summary": "Add the working-days calculation",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    }
+  ]
+}

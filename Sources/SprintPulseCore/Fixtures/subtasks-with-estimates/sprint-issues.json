@@ -1,0 +1,66 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 5,
+  "issues": [
+    {
+      "id": "96301",
+      "key": "SUB-1501",
+      "fields": {
+        "summary": "Ship the Status Map",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    },
+    {
+      "id": "96302",
+      "key": "SUB-1502",
+      "fields": {
+        "summary": "Define the FlowState enum",
+        "issuetype": { "name": "Sub-task", "subtask": true },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "parent": { "key": "SUB-1501" },
+        "customfield_10002": 8
+      }
+    },
+    {
+      "id": "96303",
+      "key": "SUB-1503",
+      "fields": {
+        "summary": "Wire the panel rows",
+        "issuetype": { "name": "Sub-task", "subtask": true },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "parent": { "key": "SUB-1501" },
+        "customfield_10002": 13
+      }
+    },
+    {
+      "id": "96304",
+      "key": "SUB-1504",
+      "fields": {
+        "summary": "Add the four fixtures",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 2
+      }
+    },
+    {
+      "id": "96305",
+      "key": "SUB-1505",
+      "fields": {
+        "summary": "Review the fixture corpus",
+        "issuetype": { "name": "Sub-task", "subtask": true },
+        "status": { "name": "In Review" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "parent": { "key": "SUB-1504" },
+        "customfield_10002": 3
+      }
+    }
+  ]
+}

@@ -90,9 +90,8 @@ public struct JiraIssueType: Decodable, Equatable, Sendable {
     public let subtask: Bool
 }
 
-/// A Jira status. The status *name* is a Jira string; nothing outside a Status Map may
-/// interpret it (CONTEXT invariant 1). The walking skeleton carries it without reading it;
-/// the Status Map arrives in #4.
+/// A Jira status. The status *name* is a Jira string; nothing outside the `StatusMap` may
+/// interpret it (CONTEXT invariant 1).
 public struct JiraStatus: Decodable, Equatable, Sendable {
     public let name: String
 }

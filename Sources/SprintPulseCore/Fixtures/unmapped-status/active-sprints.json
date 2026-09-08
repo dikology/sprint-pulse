@@ -1,0 +1,18 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "isLast": true,
+  "values": [
+    {
+      "id": 6002,
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/6002",
+      "state": "active",
+      "name": "Unmapped Status Sprint",
+      "startDate": "2026-09-01T09:00:00.000+0000",
+      "endDate": "2026-09-12T17:00:00.000+0000",
+      "activatedDate": "2026-09-01T09:05:00.000+0000",
+      "originBoardId": 172,
+      "goal": "A workflow status the Status Map does not know."
+    }
+  ]
+}

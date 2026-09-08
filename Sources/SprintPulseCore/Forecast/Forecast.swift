@@ -1,35 +1,62 @@
 import Foundation
 
 /// The domain's entry point: a pure transformation of
-/// `(gateway response, stored Sprint Baseline, now)` into `(Instrument, updated Sprint Baseline)`.
+/// `(gateway response, Status Map, stored Sprint Baseline, now)` into
+/// `(Instrument, updated Sprint Baseline)`.
 ///
-/// No I/O happens here and there is no store protocol — the app reads and writes the baseline,
-/// the domain only computes the next one. The current date is an argument so tests can pin
-/// "today".
+/// No I/O happens here and there is no store protocol — the app reads and writes the baseline
+/// and supplies the Status Map, the domain only computes. The current date is an argument so
+/// tests can pin "today".
 ///
-/// The walking skeleton computes one number. Flow States (#4), Working Days (#5) and the
+/// #4 partitions My Work by Flow State through the Status Map. Working Days (#5) and the
 /// forecast proper (#6) extend this function; they do not replace it.
 public enum Forecast {
     public static func evaluate(
         snapshot: SprintSnapshot,
         identity: OperatorIdentity,
+        statusMap: StatusMap,
         baseline: SprintBaseline?,
         now: Date
     ) -> (instrument: Instrument, baseline: SprintBaseline) {
 
-        // Sub-tasks are detail belonging to their parent, never Issues.
+        // Sub-tasks are detail belonging to their parent, never Issues. Their Estimates are
+        // ignored entirely rather than rolled up (CONTEXT invariant 8).
         let issues = snapshot.issues.filter { !$0.fields.issueType.subtask }
 
         // My Work: the Issues assigned to the Operator. Team Scope never enters the forecast.
         let myWork = issues.filter { identity.matches($0.fields.assignee) }
 
-        // An Unestimated Issue contributes nothing — it is excluded, never coerced to
-        // zero-as-a-value (CONTEXT invariant 2).
-        let pointsRemaining = myWork.compactMap { $0.fields.estimate }.reduce(0, +)
+        // Partition My Work by Flow State. A status with no Status Map entry is an Unmapped
+        // Status: its Issues enter no set and the status name is surfaced. Never bucketed by
+        // resemblance (ADR-0002).
+        var byFlowState: [FlowState: [JiraIssue]] = [:]
+        var unmapped: Set<String> = []
+        for issue in myWork {
+            if let state = statusMap.flowState(for: issue.fields.status.name) {
+                byFlowState[state, default: []].append(issue)
+            } else {
+                unmapped.insert(issue.fields.status.name)
+            }
+        }
+
+        // Points(S) sums Estimates over a set. An Unestimated Issue contributes nothing — it is
+        // excluded, never coerced to zero-as-a-value (CONTEXT invariant 2).
+        let pointsByFlowState = Dictionary(uniqueKeysWithValues: FlowState.allCases.map { state in
+            (state, (byFlowState[state] ?? []).compactMap { $0.fields.estimate }.reduce(0, +))
+        })
+
+        // U — a count, not a sum. Only Unestimated Issues in Actionable ∪ Waiting count;
+        // Unestimated Issues that are Done or Dropped can no longer affect the outcome.
+        let unestimatedCount = (FlowState.actionable + FlowState.waiting)
+            .flatMap { byFlowState[$0] ?? [] }
+            .filter { $0.fields.estimate == nil }
+            .count
 
         let instrument = Instrument(
             sprintName: snapshot.sprint.name,
-            pointsRemaining: pointsRemaining
+            pointsByFlowState: pointsByFlowState,
+            unestimatedCount: unestimatedCount,
+            unmappedStatuses: unmapped.sorted()
         )
 
         let updatedBaseline: SprintBaseline

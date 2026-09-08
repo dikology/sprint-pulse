@@ -1,0 +1,18 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "isLast": true,
+  "values": [
+    {
+      "id": 6004,
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/6004",
+      "state": "active",
+      "name": "Sub-tasks With Estimates Sprint",
+      "startDate": "2026-09-01T09:00:00.000+0000",
+      "endDate": "2026-09-12T17:00:00.000+0000",
+      "activatedDate": "2026-09-01T09:07:00.000+0000",
+      "originBoardId": 172,
+      "goal": "Sub-tasks carry estimates that must be ignored, not rolled up."
+    }
+  ]
+}

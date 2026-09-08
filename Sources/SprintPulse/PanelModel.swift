@@ -11,6 +11,8 @@ final class PanelModel: ObservableObject {
 
     /// Resolved from `/rest/api/2/myself` in M1. Hard-coded to the fixture's Operator until then.
     private let identity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
+    /// The default map, displayed read-only in M0; the editor is M1.
+    let statusMap = StatusMap.default
     private let baselineStore = BaselineStore()
 
     init() {
@@ -24,6 +26,7 @@ final class PanelModel: ObservableObject {
         return "▲ \(Self.formatted(instrument.pointsRemaining))"
     }
 
+
     func load() async {
         do {
             let gateway = try FixtureJiraGateway.bundled(named: "walking-skeleton")
@@ -34,6 +37,7 @@ final class PanelModel: ObservableObject {
             let result = Forecast.evaluate(
                 snapshot: snapshot,
                 identity: identity,
+                statusMap: statusMap,
                 baseline: baselineStore.load(),
                 now: Date()
             )

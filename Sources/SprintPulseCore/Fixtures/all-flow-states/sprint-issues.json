@@ -1,0 +1,85 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 7,
+  "issues": [
+    {
+      "id": "96001",
+      "key": "AFS-1201",
+      "fields": {
+        "summary": "Draft the release notes",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 3
+      }
+    },
+    {
+      "id": "96002",
+      "key": "AFS-1202",
+      "fields": {
+        "summary": "Investigate the flaky keychain test",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Backlog" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 2
+      }
+    },
+    {
+      "id": "96003",
+      "key": "AFS-1203",
+      "fields": {
+        "summary": "Build the Status Map partitioning",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    },
+    {
+      "id": "96004",
+      "key": "AFS-1204",
+      "fields": {
+        "summary": "Panel rows for Points per Flow State",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Review" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 8
+      }
+    },
+    {
+      "id": "96005",
+      "key": "AFS-1205",
+      "fields": {
+        "summary": "Confirm the story-point field id with ops",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Need Info" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 1
+      }
+    },
+    {
+      "id": "96006",
+      "key": "AFS-1206",
+      "fields": {
+        "summary": "Walking skeleton wired end to end",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Done" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 13
+      }
+    },
+    {
+      "id": "96007",
+      "key": "AFS-1207",
+      "fields": {
+        "summary": "Spike: probabilistic burndown model",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Cancelled" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 21
+      }
+    }
+  ]
+}
