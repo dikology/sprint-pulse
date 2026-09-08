@@ -1,0 +1,74 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 6,
+  "issues": [
+    {
+      "id": "94001",
+      "key": "MOB-1201",
+      "fields": {
+        "summary": "Wire the menu-bar panel to the forecast",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    },
+    {
+      "id": "94002",
+      "key": "MOB-1202",
+      "fields": {
+        "summary": "Define the Jira Data Center response shapes",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 8
+      }
+    },
+    {
+      "id": "94003",
+      "key": "MOB-1203",
+      "fields": {
+        "summary": "Decide the story-point custom field id",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": null
+      }
+    },
+    {
+      "id": "94004",
+      "key": "MOB-1204",
+      "fields": {
+        "summary": "Lay out the panel VStack",
+        "issuetype": { "name": "Sub-task", "subtask": true },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 3
+      }
+    },
+    {
+      "id": "94005",
+      "key": "MOB-1205",
+      "fields": {
+        "summary": "Review the fixture corpus plan",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "aivanova", "key": "JIRAUSER10877", "displayName": "Anna Ivanova" },
+        "customfield_10002": 13
+      }
+    },
+    {
+      "id": "94006",
+      "key": "MOB-1207",
+      "fields": {
+        "summary": "Triage: menu-bar icon artwork",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": null,
+        "customfield_10002": 2
+      }
+    }
+  ]
+}
