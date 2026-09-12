@@ -5,16 +5,18 @@ import Foundation
 /// `(Instrument, updated Sprint Baseline)`.
 ///
 /// No I/O happens here and there is no store protocol — the app reads and writes the baseline
-/// and supplies the Status Map, the domain only computes. The current date is an argument so
-/// tests can pin "today".
+/// and supplies the Status Map and the Working Calendar, the domain only computes. The current
+/// date is an argument so tests can pin "today".
 ///
-/// #4 partitions My Work by Flow State through the Status Map. Working Days (#5) and the
-/// forecast proper (#6) extend this function; they do not replace it.
+/// #4 partitions My Work by Flow State through the Status Map. #5 adds Working Days Remaining
+/// through the `WorkingCalendar`. The forecast proper (#6) extends this function further; it
+/// does not replace it.
 public enum Forecast {
     public static func evaluate(
         snapshot: SprintSnapshot,
         identity: OperatorIdentity,
         statusMap: StatusMap,
+        workingCalendar: WorkingCalendar,
         baseline: SprintBaseline?,
         now: Date
     ) -> (instrument: Instrument, baseline: SprintBaseline) {
@@ -52,11 +54,19 @@ public enum Forecast {
             .filter { $0.fields.estimate == nil }
             .count
 
+        // WDR: the denominator of the Required Rate (#6). Sprint bounds come from the sprint
+        // data, never entered by the Operator; a sprint with no end date yet reports 0 rather
+        // than guessing.
+        let workingDaysRemaining = snapshot.sprint.endDate.map {
+            workingCalendar.workingDaysRemaining(now: now, sprintEnd: $0)
+        } ?? 0
+
         let instrument = Instrument(
             sprintName: snapshot.sprint.name,
             pointsByFlowState: pointsByFlowState,
             unestimatedCount: unestimatedCount,
-            unmappedStatuses: unmapped.sorted()
+            unmappedStatuses: unmapped.sorted(),
+            workingDaysRemaining: workingDaysRemaining
         )
 
         let updatedBaseline: SprintBaseline

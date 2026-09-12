@@ -26,16 +26,23 @@ public struct Instrument: Equatable, Sendable {
     /// the panel surfaces it prominently and Confidence is forced to `Unknown` (#6).
     public let unmappedStatuses: [String]
 
+    /// `WDR` — Working Days Remaining: Working Days in `[today, sprintEnd]`, inclusive of today,
+    /// counted against the Operator's configured working pattern rather than a naive weekday
+    /// count. `0` once the sprint has ended.
+    public let workingDaysRemaining: Int
+
     public init(
         sprintName: String,
         pointsByFlowState: [FlowState: Double],
         unestimatedCount: Int,
-        unmappedStatuses: [String]
+        unmappedStatuses: [String],
+        workingDaysRemaining: Int
     ) {
         self.sprintName = sprintName
         self.pointsByFlowState = pointsByFlowState
         self.unestimatedCount = unestimatedCount
         self.unmappedStatuses = unmappedStatuses
+        self.workingDaysRemaining = workingDaysRemaining
     }
 
     /// Points in one Flow State. `0` for an absent or wholly-unestimated set.

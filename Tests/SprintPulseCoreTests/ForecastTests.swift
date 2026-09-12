@@ -9,6 +9,10 @@ final class ForecastTests: XCTestCase {
     /// A pinned "today" inside the fixtures' sprint window.
     let now = isoDate("2026-09-08T12:00:00Z")
 
+    /// Monday–Friday, pinned to UTC so `workingDaysRemaining` is deterministic regardless of the
+    /// machine running the tests.
+    let workingCalendar = WorkingCalendar(timeZone: TimeZone(identifier: "UTC")!)
+
     private func snapshot(_ fixture: String) async throws -> SprintSnapshot {
         let gateway = try FixtureJiraGateway.bundled(named: fixture)
         let sprint = try SprintSnapshot.selectActiveSprint(from: try await gateway.activeSprints())
@@ -21,6 +25,7 @@ final class ForecastTests: XCTestCase {
             snapshot: try await snapshot(fixture),
             identity: operatorIdentity,
             statusMap: .default,
+            workingCalendar: workingCalendar,
             baseline: baseline,
             now: now
         )
@@ -42,7 +47,10 @@ final class ForecastTests: XCTestCase {
                     .toDo: 8, .inProgress: 5, .inReview: 0, .onHold: 0, .done: 0, .dropped: 0,
                 ],
                 unestimatedCount: 1,
-                unmappedStatuses: []
+                unmappedStatuses: [],
+                // Tue 09-08 (now) through Sat 09-12 (sprint end): Tue–Fri are Working Days,
+                // Saturday is not.
+                workingDaysRemaining: 4
             )
         )
     }
@@ -61,7 +69,8 @@ final class ForecastTests: XCTestCase {
         let byName = OperatorIdentity(key: "JIRAUSER99999", name: "dgimaletdinov")
         let result = Forecast.evaluate(
             snapshot: try await snapshot("walking-skeleton"),
-            identity: byName, statusMap: .default, baseline: nil, now: now
+            identity: byName, statusMap: .default, workingCalendar: workingCalendar,
+            baseline: nil, now: now
         )
 
         XCTAssertEqual(result.instrument.actionablePoints, 13)

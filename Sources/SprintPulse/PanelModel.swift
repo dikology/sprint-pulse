@@ -13,6 +13,8 @@ final class PanelModel: ObservableObject {
     private let identity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
     /// The default map, displayed read-only in M0; the editor is M1.
     let statusMap = StatusMap.default
+    /// Monday–Friday, no Non-Working Dates, displayed read-only in M0; the editor is M1.
+    private let workingCalendar = WorkingCalendar.default
     private let baselineStore = BaselineStore()
 
     init() {
@@ -38,6 +40,7 @@ final class PanelModel: ObservableObject {
                 snapshot: snapshot,
                 identity: identity,
                 statusMap: statusMap,
+                workingCalendar: workingCalendar,
                 baseline: baselineStore.load(),
                 now: Date()
             )

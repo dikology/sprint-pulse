@@ -41,6 +41,15 @@ struct PanelView: View {
         Text(instrument.sprintName)
             .font(.headline)
 
+        HStack {
+            Text("Working Days Remaining")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text("\(instrument.workingDaysRemaining)")
+                .font(.callout.monospacedDigit())
+        }
+        .font(.callout)
+
         // An Unmapped Status is surfaced prominently, naming the status. Its Issues are in no
         // set below.
         if !instrument.unmappedStatuses.isEmpty {
