@@ -33,27 +33,23 @@ extension ConfidenceState {
     /// first match winning. **That table is normative: this is a direct transcription, not a
     /// re-derivation, and the order must not change.**
     ///
-    /// Rules 1–5 make the function total: by the time a Required Rate ÷ Demonstrated Rate ratio
-    /// is taken, `actionablePoints > 0` (rules 2–3 ruled out zero) and `workingDaysRemaining > 0`
-    /// (rule 5 ruled out zero), so the Required Rate is defined and positive; `workingDaysElapsed
-    /// ≥ 2` and `completedPoints > 0` (rule 4), so the Demonstrated Rate is defined. No `A/0` or
-    /// `C/0` is ever reached.
+    /// Rules 1–5 make the function total: `requiredRate` and `demonstratedRate` are `nil` under
+    /// exactly the conditions rules 4–5 check for (see `Forecast.evaluate`, the sole place either
+    /// division is performed), so by the time the ratio is taken both are defined and the
+    /// `Required Rate` is positive. No `A/0` or `C/0` is ever reached.
     public static func evaluate(
         unmappedStatusPresent: Bool,
         actionablePoints: Double,
         waitingPoints: Double,
-        completedPoints: Double,
-        workingDaysElapsed: Int,
-        workingDaysRemaining: Int
+        requiredRate: Double?,
+        demonstratedRate: Double?
     ) -> ConfidenceState {
         if unmappedStatusPresent { return .unknown }                                   // Rule 1
         if actionablePoints == 0 && waitingPoints == 0 { return .finished }             // Rule 2
         if actionablePoints == 0 && waitingPoints > 0 { return .handsOff }              // Rule 3
-        if workingDaysElapsed < 2 || completedPoints == 0 { return .unknown }           // Rule 4
-        if workingDaysRemaining == 0 { return .offTrack }                              // Rule 5
+        guard let demonstratedRate else { return .unknown }                            // Rule 4
+        guard let requiredRate else { return .offTrack }                               // Rule 5
 
-        let requiredRate = actionablePoints / Double(workingDaysRemaining)
-        let demonstratedRate = completedPoints / Double(workingDaysElapsed)
         let ratio = demonstratedRate / requiredRate
 
         if ratio >= ConfidenceBands.noSweat { return .noSweat }                        // Rule 6

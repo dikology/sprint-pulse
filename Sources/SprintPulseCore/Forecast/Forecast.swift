@@ -89,9 +89,8 @@ public enum Forecast {
             unmappedStatusPresent: !unmapped.isEmpty,
             actionablePoints: actionablePoints,
             waitingPoints: waitingPoints,
-            completedPoints: completedPoints,
-            workingDaysElapsed: workingDaysElapsed,
-            workingDaysRemaining: workingDaysRemaining
+            requiredRate: requiredRate,
+            demonstratedRate: demonstratedRate
         )
 
         let instrument = Instrument(
