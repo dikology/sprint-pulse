@@ -1,0 +1,18 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "isLast": true,
+  "values": [
+    {
+      "id": 7005,
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/7005",
+      "state": "active",
+      "name": "Confidence Cold Start Sprint",
+      "startDate": "2026-09-14T09:00:00.000+0000",
+      "endDate": "2026-09-25T17:00:00.000+0000",
+      "activatedDate": "2026-09-14T09:03:00.000+0000",
+      "originBoardId": 172,
+      "goal": "Day one of the sprint: fewer than two Working Days elapsed."
+    }
+  ]
+}

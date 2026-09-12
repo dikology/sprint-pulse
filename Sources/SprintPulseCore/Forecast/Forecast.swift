@@ -9,8 +9,8 @@ import Foundation
 /// date is an argument so tests can pin "today".
 ///
 /// #4 partitions My Work by Flow State through the Status Map. #5 adds Working Days Remaining
-/// through the `WorkingCalendar`. The forecast proper (#6) extends this function further; it
-/// does not replace it.
+/// through the `WorkingCalendar`. #6 adds the rates and the Confidence State. Caps and a
+/// structured explanation (#7) extend this function further; they do not replace it.
 public enum Forecast {
     public static func evaluate(
         snapshot: SprintSnapshot,
@@ -54,19 +54,56 @@ public enum Forecast {
             .filter { $0.fields.estimate == nil }
             .count
 
-        // WDR: the denominator of the Required Rate (#6). Sprint bounds come from the sprint
-        // data, never entered by the Operator; a sprint with no end date yet reports 0 rather
-        // than guessing.
+        // WDR: the denominator of the Required Rate. Sprint bounds come from the sprint data,
+        // never entered by the Operator; a sprint with no end date yet reports 0 rather than
+        // guessing.
         let workingDaysRemaining = snapshot.sprint.endDate.map {
             workingCalendar.workingDaysRemaining(now: now, sprintEnd: $0)
         } ?? 0
+
+        // WDE: the denominator of the Demonstrated Rate. A sprint with no start date yet reports
+        // 0, the same as one that has not started.
+        let workingDaysElapsed = snapshot.sprint.startDate.map {
+            workingCalendar.workingDaysElapsed(now: now, sprintStart: $0)
+        } ?? 0
+
+        // A, W, C — summed via the same formula `Instrument.actionablePoints` /
+        // `.waitingPoints` expose, so the rates are reproducible by hand from numbers already
+        // on screen (CONTEXT invariant 10) and there is one place the sums are computed, not two.
+        let actionablePoints = Instrument.sum(FlowState.actionable, of: pointsByFlowState)
+        let waitingPoints = Instrument.sum(FlowState.waiting, of: pointsByFlowState)
+        let completedPoints = pointsByFlowState[.done] ?? 0
+
+        // R = A / WDR, defined once there is a Working Day left to burn against.
+        let requiredRate: Double? = workingDaysRemaining > 0
+            ? actionablePoints / Double(workingDaysRemaining)
+            : nil
+
+        // D = C / WDE, defined once there is both enough elapsed history and something
+        // completed to measure it from.
+        let demonstratedRate: Double? = (workingDaysElapsed >= 2 && completedPoints > 0)
+            ? completedPoints / Double(workingDaysElapsed)
+            : nil
+
+        let confidenceState = ConfidenceState.evaluate(
+            unmappedStatusPresent: !unmapped.isEmpty,
+            actionablePoints: actionablePoints,
+            waitingPoints: waitingPoints,
+            completedPoints: completedPoints,
+            workingDaysElapsed: workingDaysElapsed,
+            workingDaysRemaining: workingDaysRemaining
+        )
 
         let instrument = Instrument(
             sprintName: snapshot.sprint.name,
             pointsByFlowState: pointsByFlowState,
             unestimatedCount: unestimatedCount,
             unmappedStatuses: unmapped.sorted(),
-            workingDaysRemaining: workingDaysRemaining
+            workingDaysRemaining: workingDaysRemaining,
+            workingDaysElapsed: workingDaysElapsed,
+            requiredRate: requiredRate,
+            demonstratedRate: demonstratedRate,
+            confidenceState: confidenceState
         )
 
         let updatedBaseline: SprintBaseline

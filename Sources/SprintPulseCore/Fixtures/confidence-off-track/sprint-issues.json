@@ -1,0 +1,30 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 2,
+  "issues": [
+    {
+      "id": "97001",
+      "key": "OFT-1601",
+      "fields": {
+        "summary": "Actionable work that isn't moving fast enough",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 4
+      }
+    },
+    {
+      "id": "97002",
+      "key": "OFT-1602",
+      "fields": {
+        "summary": "The little that has been finished",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Done" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 2
+      }
+    }
+  ]
+}

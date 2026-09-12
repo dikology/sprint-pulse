@@ -1,0 +1,18 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "isLast": true,
+  "values": [
+    {
+      "id": 7006,
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/7006",
+      "state": "active",
+      "name": "Confidence Zero Completed Sprint",
+      "startDate": "2026-09-14T09:00:00.000+0000",
+      "endDate": "2026-09-25T17:00:00.000+0000",
+      "activatedDate": "2026-09-14T09:03:00.000+0000",
+      "originBoardId": 172,
+      "goal": "Enough elapsed history, but nothing Done yet."
+    }
+  ]
+}

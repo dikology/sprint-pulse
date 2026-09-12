@@ -42,10 +42,36 @@ struct PanelView: View {
             .font(.headline)
 
         HStack {
+            Text("Confidence")
+                .font(.subheadline.bold())
+            Spacer()
+            Text(label(for: instrument.confidenceState))
+                .font(.subheadline.bold())
+        }
+
+        HStack {
             Text("Working Days Remaining")
                 .foregroundStyle(.secondary)
             Spacer()
             Text("\(instrument.workingDaysRemaining)")
+                .font(.callout.monospacedDigit())
+        }
+        .font(.callout)
+
+        HStack {
+            Text("Required Rate")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(rate(instrument.requiredRate))
+                .font(.callout.monospacedDigit())
+        }
+        .font(.callout)
+
+        HStack {
+            Text("Demonstrated Rate")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(rate(instrument.demonstratedRate))
                 .font(.callout.monospacedDigit())
         }
         .font(.callout)
@@ -144,5 +170,31 @@ struct PanelView: View {
         case .done: return "Done"
         case .dropped: return "Dropped"
         }
+    }
+
+    /// The panel's label for a Confidence State. Confidence is a named state, never a
+    /// percentage or a probability — the view renders exactly that string.
+    private func label(for state: ConfidenceState) -> String {
+        switch state {
+        case .unknown: return "Unknown"
+        case .offTrack: return "Off Track"
+        case .tight: return "Tight"
+        case .onTrack: return "On Track"
+        case .noSweat: return "No Sweat"
+        case .handsOff: return "Hands Off"
+        case .finished: return "Finished"
+        }
+    }
+
+    /// `—` for an undefined rate rather than `0` or blank, so the reader never mistakes "not
+    /// yet knowable" for "nothing to do."
+    ///
+    /// Rates get their own two-decimal formatting rather than `PanelModel.formatted` (Points'
+    /// formatter): one decimal place is too coarse to reproduce the band boundaries (`0.75`,
+    /// `1.00`, `1.25`) by hand — `String(format: "%.1f", 1.25)` rounds to `"1.2"`, which reads
+    /// back into the wrong band.
+    private func rate(_ rate: Double?) -> String {
+        guard let rate else { return "—" }
+        return String(format: "%.2f/day", rate)
     }
 }
