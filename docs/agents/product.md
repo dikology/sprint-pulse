@@ -123,7 +123,10 @@ simply absent — the same rule as an Intent with no legal transition.
 ## Fixtures
 
 Fixtures are JSON in the exact shape of Jira Data Center's responses, served through the same
-gateway as the live client. `SprintPulseCore` cannot tell which it is talking to.
+gateway as the live client. `SprintPulseCore` cannot tell which it is talking to. One deliberate
+exception: a Scope Delta scenario also carries `baseline.json`, the stored Sprint Baseline in
+the app's own JSON (#8) — the Baseline is never something Jira returns, so it is part of the
+scenario but never passes through the gateway.
 
 Fixture mode is the **default whenever no credential exists**, so the app is fully explorable
 before anything is authenticated. Fixtures are the project's test corpus, not a demo: the set

@@ -1,0 +1,41 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 3,
+  "issues": [
+    {
+      "id": "95301",
+      "key": "DRP-2101",
+      "fields": {
+        "summary": "Sunset the legacy import path",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Cancelled" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 8
+      }
+    },
+    {
+      "id": "95302",
+      "key": "DRP-2102",
+      "fields": {
+        "summary": "Migrate the nightly report off the old schema",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Cancelled" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    },
+    {
+      "id": "95303",
+      "key": "DRP-2103",
+      "fields": {
+        "summary": "Retire the deprecated ingest endpoint",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Cancelled" },
+        "assignee": { "name": "aivanova", "key": "JIRAUSER10877", "displayName": "Anna Ivanova" },
+        "customfield_10002": 13
+      }
+    }
+  ]
+}

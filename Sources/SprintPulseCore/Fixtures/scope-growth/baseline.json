@@ -1,0 +1,8 @@
+{
+  "sprintID": 8001,
+  "capturedAt": "2026-09-01T09:05:00Z",
+  "entries": [
+    { "key": "SGR-1801", "estimate": 8 },
+    { "key": "SGR-1802", "estimate": 5 }
+  ]
+}

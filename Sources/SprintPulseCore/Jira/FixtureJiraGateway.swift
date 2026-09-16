@@ -8,6 +8,8 @@ import Foundation
 /// A fixture directory contains:
 /// - `active-sprints.json` — a `/rest/agile/1.0/board/{id}/sprint` envelope
 /// - `sprint-issues.json` — a `/rest/agile/1.0/sprint/{id}/issue` envelope
+/// - optionally `baseline.json` — the scenario's stored Sprint Baseline, the app's own
+///   `SprintBaseline` JSON (not a Jira response), read via `bundledDirectory(named:)`
 public struct FixtureJiraGateway: JiraGateway {
     public enum FixtureError: Error, Equatable {
         case fileNotReadable(String)
@@ -22,10 +24,18 @@ public struct FixtureJiraGateway: JiraGateway {
 
     /// Reads a fixture set bundled with `SprintPulseCore` (its test corpus), by directory name.
     public static func bundled(named name: String) throws -> FixtureJiraGateway {
+        FixtureJiraGateway(directory: try bundledDirectory(named: name))
+    }
+
+    /// The bundled directory for a fixture set, so a caller can read a scenario file that is
+    /// not a Jira response — the day-one `baseline.json` of a Scope Delta scenario, for
+    /// instance. The gateway protocol covers Jira's envelopes only; the Baseline is Sprint
+    /// Pulse's own persisted value and reaches the domain as an argument, never as a fetch.
+    public static func bundledDirectory(named name: String) throws -> URL {
         guard let fixtures = Bundle.module.url(forResource: "Fixtures", withExtension: nil) else {
             throw FixtureError.fileNotReadable("Fixtures")
         }
-        return FixtureJiraGateway(directory: fixtures.appendingPathComponent(name, isDirectory: true))
+        return fixtures.appendingPathComponent(name, isDirectory: true)
     }
 
     public func activeSprints() async throws -> JiraSprintsResponse {

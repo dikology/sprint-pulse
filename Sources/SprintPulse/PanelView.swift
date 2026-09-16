@@ -90,7 +90,7 @@ struct PanelView: View {
                 Text(instrument.unmappedStatuses.joined(separator: ", "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Its Issues are excluded from every total until the status is mapped.")
+                Text("Its Issues are excluded from the forecast totals until the status is mapped.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -109,6 +109,21 @@ struct PanelView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Text("\(instrument.unestimatedCount) issue\(instrument.unestimatedCount == 1 ? "" : "s")")
+                .font(.callout.monospacedDigit())
+        }
+        .font(.callout)
+
+        // The scope figures (#8): what the sprint holds now, what it held when first observed,
+        // and the difference. Both operands sit beside the Delta so it stays reproducible by
+        // hand (invariant 10), and they are sprint-wide by design — scope moves through Issues
+        // that are not the Operator's.
+        pointsRow("Live Sprint Points", instrument.liveSprintPoints)
+        pointsRow("Baseline Points", instrument.baselinePoints)
+        HStack {
+            Text("Scope Delta")
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(scopeDelta(instrument.scopeDelta))
                 .font(.callout.monospacedDigit())
         }
         .font(.callout)
@@ -259,6 +274,17 @@ struct PanelView: View {
             let actionable = PanelModel.formatted(instrument.actionablePoints)
             return "\(waiting) Waiting against \(actionable) Actionable Points, over the \(percent)% line"
         }
+    }
+
+    /// A Scope Delta signed with the words that say what moved: "+34 added" is scope entering
+    /// the sprint, "-8 removed" is work dropped out of it, and `0` is a sprint of the same
+    /// shape as when it was first observed. The sign alone never carries the reading — and
+    /// neither figure is the Dropped row above, which counts work cancelled where it stood
+    /// without the sprint changing shape at all (#8).
+    private func scopeDelta(_ delta: Double) -> String {
+        guard delta != 0 else { return "0" }
+        let points = PanelModel.formatted(abs(delta))
+        return delta > 0 ? "+\(points) added" : "-\(points) removed"
     }
 
     /// `—` for an undefined rate rather than `0` or blank, so the reader never mistakes "not

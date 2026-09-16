@@ -33,7 +33,7 @@ final class FixtureJiraGatewayTests: XCTestCase {
         XCTAssertNil(byKey["MOB-1207"]?.fields.assignee)
     }
 
-    /// The #4 corpus: every bundle decodes through the gateway in Jira Data Center shape.
+    /// The fixture corpus: every bundle decodes through the gateway in Jira Data Center shape.
     func test_bundled_everyFixtureCorpusDirectoryDecodes() async throws {
         for name in [
             "walking-skeleton",
@@ -41,6 +41,10 @@ final class FixtureJiraGatewayTests: XCTestCase {
             "unmapped-status",
             "unestimated-across-states",
             "subtasks-with-estimates",
+            "scope-growth",
+            "scope-shrink",
+            "baseline-cold-start",
+            "all-dropped",
         ] {
             let gateway = try FixtureJiraGateway.bundled(named: name)
             let sprints = try await gateway.activeSprints()

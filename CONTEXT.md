@@ -65,7 +65,8 @@ appear only here; no other part of Sprint Pulse knows them.
 
 **Unmapped Status**:
 A Jira status with no entry in the Status Map. Issues in an Unmapped Status are surfaced
-prominently and excluded from Points totals — never quietly bucketed into a Flow State.
+prominently and excluded from the forecast's Points totals — never quietly bucketed into a Flow
+State.
 
 **In Review**:
 The Flow State of work that has left the operator's hands for someone else's judgement but is
@@ -152,10 +153,17 @@ _Avoid_: reason, tooltip, justification
 A snapshot of the Active Sprint's Issues and Estimates, taken the first time Sprint Pulse
 observes the sprint as active. It exists to explain change, never to be forecast against.
 
+**Live Sprint Points**:
+Points over every task-level Issue in the Active Sprint, regardless of assignee — the shape
+the sprint has now, which the Sprint Baseline once recorded as Baseline Points. Shown on the
+panel only as the two operands of the Scope Delta; no forecast figure is computed from either.
+
 **Scope Delta**:
 The difference between the Active Sprint's live Points and its Sprint Baseline. Displayed so
 that a movement in Confidence can be attributed either to the operator's progress or to the
-sprint changing shape.
+sprint changing shape. It moves when the Issue set or its Estimates move — added, removed,
+re-estimated — and never on a status change: work `Dropped` in place has left the remaining
+total, not the sprint's shape.
 _Avoid_: scope creep, churn
 
 ## Invariants

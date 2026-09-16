@@ -3,9 +3,9 @@ import Foundation
 /// A snapshot of the Active Sprint's Issues and Estimates, taken the first time Sprint Pulse
 /// observes the sprint as active.
 ///
-/// It exists to explain change — the Scope Delta (#4+) is measured against it — never to be
-/// forecast against. The walking skeleton captures and persists it but does not yet display
-/// anything derived from it.
+/// It exists to explain change — the Scope Delta (#8) is measured against it — never to be
+/// forecast against. The walking skeleton captured and persisted it; #8 put it to use, so the
+/// Baseline's only appearance on the panel is beside the live Points it is compared to.
 ///
 /// The snapshot is over the whole sprint (Team Scope), not just My Work: scope can move
 /// through issues that are not the Operator's.
@@ -25,6 +25,14 @@ public struct SprintBaseline: Equatable, Sendable, Codable {
     public let sprintID: Int
     public let capturedAt: Date
     public let entries: [Entry]
+
+    /// The Points the Baseline recorded: a sum of Estimates over its entries, Unestimated
+    /// Issues skipped rather than coerced (invariant 2). The `baselinePoints` operand of the
+    /// Scope Delta (#8) lives here for the same reason `A` and `W` live on `Instrument` —
+    /// the number belongs with the data it is summed from.
+    public var points: Double {
+        entries.compactMap(\.estimate).reduce(0, +)
+    }
 
     public init(sprintID: Int, capturedAt: Date, entries: [Entry]) {
         self.sprintID = sprintID

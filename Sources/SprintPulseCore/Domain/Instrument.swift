@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The panel holds no forecast logic: it displays the fields of an `Instrument` and nothing
 /// more. Each M0 ticket widens this type — Flow States and Points per Flow State (#4), Working
-/// Days Remaining (#5), the rates and Confidence State (#6), and the `ConfidenceReading` that
-/// explains them (#7).
+/// Days Remaining (#5), the rates and Confidence State (#6), the `ConfidenceReading` that
+/// explains them (#7), and the Scope Delta against the Sprint Baseline (#8).
 public struct Instrument: Equatable, Sendable {
     /// The Active Sprint's name, for the panel header.
     public let sprintName: String
@@ -56,6 +56,21 @@ public struct Instrument: Equatable, Sendable {
     /// be trusted, which is the failure `docs/agents/product.md` exists to avoid.
     public let reading: ConfidenceReading
 
+    /// Points over the live Active Sprint: every task-level Issue currently in it, regardless
+    /// of assignee (Team Scope — scope can move through Issues the Operator does not own).
+    /// The same population the Sprint Baseline snapshots, so the two are commensurable (#8).
+    public let liveSprintPoints: Double
+
+    /// Points as the Sprint Baseline recorded them: the first observation of this sprint, or
+    /// equal to `liveSprintPoints` when this is it. Forecast input: never (CONTEXT invariant 9).
+    public let baselinePoints: Double
+
+    /// `Scope Delta` — live sprint Points minus Sprint Baseline Points (CONTEXT "Scope Delta").
+    /// Positive is added scope, negative is work dropped out of the sprint; the two must read
+    /// differently on the panel, and neither is the `Dropped` Flow State, whose Points leave the
+    /// remaining total without moving this figure (#8).
+    public var scopeDelta: Double { liveSprintPoints - baselinePoints }
+
     public init(
         sprintName: String,
         pointsByFlowState: [FlowState: Double],
@@ -65,7 +80,9 @@ public struct Instrument: Equatable, Sendable {
         workingDaysElapsed: Int,
         requiredRate: Double?,
         demonstratedRate: Double?,
-        reading: ConfidenceReading
+        reading: ConfidenceReading,
+        liveSprintPoints: Double,
+        baselinePoints: Double
     ) {
         self.sprintName = sprintName
         self.pointsByFlowState = pointsByFlowState
@@ -76,6 +93,8 @@ public struct Instrument: Equatable, Sendable {
         self.requiredRate = requiredRate
         self.demonstratedRate = demonstratedRate
         self.reading = reading
+        self.liveSprintPoints = liveSprintPoints
+        self.baselinePoints = baselinePoints
     }
 
     /// Points in one Flow State. `0` for an absent or wholly-unestimated set.

@@ -1,0 +1,10 @@
+{
+  "sprintID": 8002,
+  "capturedAt": "2026-09-01T09:03:11Z",
+  "entries": [
+    { "key": "SSK-1901", "estimate": 8 },
+    { "key": "SSK-1902", "estimate": 13 },
+    { "key": "SSK-1903", "estimate": 5 },
+    { "key": "SSK-1904", "estimate": 3 }
+  ]
+}

@@ -5,7 +5,8 @@ the operational companion: exact arithmetic, evaluation order, and edge cases. W
 disagree, `CONTEXT.md` defines the term and this file is wrong.
 
 Every definition here is scoped to **My Work** — the Issues in the Active Sprint assigned to the
-Operator. Team Scope enters no formula on this page.
+Operator. Team Scope enters no formula on this page, with the single bounded exception of the
+two sprint-wide figures in **Scope**, below.
 
 ## Sets
 
@@ -125,6 +126,15 @@ never claims one that did not. See CONTEXT *Reading* and *Explanation*.
 
 The Baseline exists solely to attribute movement. A fall in Confidence is either the Operator
 falling behind or the sprint growing, and those demand different responses.
+
+Scope is the one exception to this page's My-Work preamble: both figures run over the whole
+Active Sprint's task-level Issues, because scope moves through Issues the Operator does not own.
+The exception is bounded — these two numbers appear in no forecast formula. Both totals read the
+Issue set and its Estimates and nothing else: an Unestimated Issue contributes nothing, and no
+Issue's status is read. So a Dropped status change moves the `X` figure with the Delta standing,
+work removed from the sprint moves the Delta negative, and work added moves it positive. The
+first observation of a sprint is its Baseline, wherever in the sprint it falls: the Delta
+explains movement the instrument has witnessed, never day one seen from day six.
 
 ## Intents
 

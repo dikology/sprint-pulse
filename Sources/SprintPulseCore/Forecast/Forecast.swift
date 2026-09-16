@@ -11,7 +11,8 @@ import Foundation
 /// #4 partitions My Work by Flow State through the Status Map. #5 adds Working Days Remaining
 /// through the `WorkingCalendar`. #6 adds the rates and the Confidence State. #7 adds the Caps
 /// and the `ConfidenceReading` that explains the result; each extended this function's outputs
-/// without replacing its predecessors.
+/// without replacing its predecessors. #8 adds the Scope Delta pair — the Baseline enters as a
+/// value and leaves as an updated one, and no forecast number is read from it (invariant 9).
 public enum Forecast {
     public static func evaluate(
         snapshot: SprintSnapshot,
@@ -95,18 +96,6 @@ public enum Forecast {
             unestimatedCount: unestimatedCount
         )
 
-        let instrument = Instrument(
-            sprintName: snapshot.sprint.name,
-            pointsByFlowState: pointsByFlowState,
-            unestimatedCount: unestimatedCount,
-            unmappedStatuses: unmapped.sorted(),
-            workingDaysRemaining: workingDaysRemaining,
-            workingDaysElapsed: workingDaysElapsed,
-            requiredRate: requiredRate,
-            demonstratedRate: demonstratedRate,
-            reading: reading
-        )
-
         let updatedBaseline: SprintBaseline
         if let baseline, baseline.sprintID == snapshot.sprint.id {
             // Already observed this sprint as active — the baseline is fixed.
@@ -119,6 +108,30 @@ public enum Forecast {
                 entries: issues.map { SprintBaseline.Entry(key: $0.key, estimate: $0.fields.estimate) }
             )
         }
+
+        // The Scope Delta pair (#8): Points over the live sprint's task-level Issues against the
+        // Points the Baseline recorded. Unestimated Issues are skipped rather than coerced to
+        // zero-as-a-value (invariant 2), and only the Issue set and its Estimates move them — a
+        // status change, `Dropped` included, is flow inside a sprint of the same shape, not a
+        // movement of scope. On a first observation the Baseline is these same Points, so the
+        // Delta is `0`: the instrument explains change it has itself witnessed, never day one
+        // seen from day six. The forecast above reads live Points and none of these numbers.
+        let liveSprintPoints = issues.compactMap { $0.fields.estimate }.reduce(0, +)
+        let baselinePoints = updatedBaseline.points
+
+        let instrument = Instrument(
+            sprintName: snapshot.sprint.name,
+            pointsByFlowState: pointsByFlowState,
+            unestimatedCount: unestimatedCount,
+            unmappedStatuses: unmapped.sorted(),
+            workingDaysRemaining: workingDaysRemaining,
+            workingDaysElapsed: workingDaysElapsed,
+            requiredRate: requiredRate,
+            demonstratedRate: demonstratedRate,
+            reading: reading,
+            liveSprintPoints: liveSprintPoints,
+            baselinePoints: baselinePoints
+        )
 
         return (instrument, updatedBaseline)
     }

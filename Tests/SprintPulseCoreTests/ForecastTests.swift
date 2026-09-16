@@ -20,26 +20,41 @@ final class ForecastTests: XCTestCase {
         return SprintSnapshot(sprint: sprint, issues: issues.issues)
     }
 
+    /// The stored-Baseline half of a Scope Delta scenario, bundled beside the Jira-shaped
+    /// responses. Deliberately not a gateway concern: the Baseline is Sprint Pulse's own
+    /// persisted value, not something Jira returns. `nil` for fixtures without one — those
+    /// are first-observation scenarios.
+    private func bundledBaseline(_ fixture: String) throws -> SprintBaseline? {
+        let url = try FixtureJiraGateway.bundledDirectory(named: fixture)
+            .appendingPathComponent("baseline.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(SprintBaseline.self, from: data)
+    }
+
     private func evaluate(_ fixture: String, baseline: SprintBaseline? = nil) async throws -> (instrument: Instrument, baseline: SprintBaseline) {
-        Forecast.evaluate(
+        let stored = try bundledBaseline(fixture)
+        return Forecast.evaluate(
             snapshot: try await snapshot(fixture),
             identity: operatorIdentity,
             statusMap: .default,
             workingCalendar: workingCalendar,
-            baseline: baseline,
+            baseline: baseline ?? stored,
             now: now
         )
     }
 
     /// For the Confidence fixtures, each of which is pinned against its own "now" rather than
-    /// the shared one above.
+    /// the shared one above. Resolves the bundled Baseline the same way the primary helper
+    /// does, so one fixture name means one scenario in this file.
     private func evaluate(_ fixture: String, now: Date) async throws -> Instrument {
         Forecast.evaluate(
             snapshot: try await snapshot(fixture),
             identity: operatorIdentity,
             statusMap: .default,
             workingCalendar: workingCalendar,
-            baseline: nil,
+            baseline: try bundledBaseline(fixture),
             now: now
         ).instrument
     }
@@ -73,9 +88,16 @@ final class ForecastTests: XCTestCase {
                 demonstratedRate: nil,
                 // MOB-1203 is unsized, so the Unestimated Cap fires — but `Unknown` is not a band
                 // on the scale, so there is nothing for it to demote.
-                reading: ConfidenceReading(rule: .insufficientHistory, caps: [.unestimated])
+                reading: ConfidenceReading(rule: .insufficientHistory, caps: [.unestimated]),
+                // #8: the whole sprint's task-level Points — 5 + 8 + 13 + 2; MOB-1203 is
+                // Unestimated and contributes nothing, MOB-1204 is a sub-task and is not an Issue.
+                liveSprintPoints: 28,
+                // First observation: the Baseline is captured from these same Points, so the
+                // sprint has not moved from anything.
+                baselinePoints: 28
             )
         )
+        XCTAssertEqual(result.instrument.scopeDelta, 0)
     }
 
     func test_evaluate_excludesSubTasksAndOtherPeoplesWork() async throws {
@@ -224,6 +246,115 @@ final class ForecastTests: XCTestCase {
 
         XCTAssertEqual(result.baseline.sprintID, 5281)
         XCTAssertEqual(result.baseline.capturedAt, now)
+    }
+
+    // MARK: - Scope Delta (#8)
+
+    /// The sprint grew underneath the Operator: two Issues (34 Points) entered after the
+    /// Baseline was taken on day one. Added scope reads positive.
+    func test_evaluate_scopeGrowthFixture_reportsLargePositiveScopeDelta() async throws {
+        let result = try await evaluate("scope-growth")
+        let i = result.instrument
+
+        // 8 + 5 + 13 + 21; SGR-1805's 99 is a sub-task and SGR-1806 is unsized — an Unestimated
+        // Issue contributes nothing, never a coerced zero (invariant 2).
+        XCTAssertEqual(i.liveSprintPoints, 47)
+        // Day one was SGR-1801 (8) + SGR-1802 (5). Their later Done and In Progress statuses
+        // move Points between Flow States, not this figure.
+        XCTAssertEqual(i.baselinePoints, 13)
+        XCTAssertEqual(i.scopeDelta, 34)
+        // The forecast runs on live Points (invariant 9): A = 5 + 13 over WDR = 4 — nothing
+        // here reads the Baseline.
+        XCTAssertEqual(i.requiredRate, 4.5)
+        // The fixed Baseline leaves core as the value that entered it.
+        XCTAssertEqual(result.baseline, try bundledBaseline("scope-growth"))
+    }
+
+    /// Scope counts the sprint's shape, not the flow within it: Unmapped Status Issues are
+    /// excluded from the forecast's totals, but a status nobody has mapped has not left the
+    /// sprint either. Both sides of the Delta read the same Issue set, so an unmapped status
+    /// moves nothing here — were it excluded, merely transitioning an Issue would read as work
+    /// removed, the very unattributable movement #8 exists to remove.
+    func test_evaluate_unmappedStatusIssues_stayInSprintShapeAndLeaveTheForecast() async throws {
+        let i = try await evaluate("unmapped-status").instrument
+
+        XCTAssertEqual(i.liveSprintPoints, 19, "5 + 3 + 8 + 2 + 1; UMS-1305 is Unestimated")
+        XCTAssertEqual(i.baselinePoints, 19, "first observation: this shape is what was captured")
+        XCTAssertEqual(i.scopeDelta, 0)
+        XCTAssertEqual(i.pointsRemaining, 10, "the forecast still sees only mapped Issues")
+    }
+
+    func test_evaluate_confidenceIsComputedFromLivePointsNotTheBaseline() async throws {
+        // The same sprint read two ways: fresh (Baseline captured now, Delta 0) and against its
+        // day-one Baseline. Every forecast figure is identical between them — only the Scope
+        // numbers differ, because only they compare against the Baseline.
+        let fresh = Forecast.evaluate(
+            snapshot: try await snapshot("scope-growth"), identity: operatorIdentity,
+            statusMap: .default, workingCalendar: workingCalendar, baseline: nil, now: now
+        ).instrument
+        let grown = try await evaluate("scope-growth").instrument
+
+        XCTAssertEqual(fresh.requiredRate, grown.requiredRate)
+        XCTAssertEqual(fresh.demonstratedRate, grown.demonstratedRate)
+        XCTAssertEqual(fresh.reading, grown.reading)
+        XCTAssertEqual(fresh.confidenceState, grown.confidenceState)
+        XCTAssertEqual(fresh.scopeDelta, 0, "first observation has witnessed no movement")
+        XCTAssertNotEqual(fresh.baselinePoints, grown.baselinePoints)
+    }
+
+    /// Work removed from the sprint — Dropped out, not `Dropped` in status: the Issues are no
+    /// longer in it at all. Removed work reads negative, differently from added scope.
+    func test_evaluate_scopeShrinkFixture_reportsNegativeScopeDeltaFromRemovedWork() async throws {
+        let i = try await evaluate("scope-shrink").instrument
+
+        XCTAssertEqual(i.liveSprintPoints, 21)
+        XCTAssertEqual(i.baselinePoints, 29, "SSK-1903 (5) and SSK-1904 (3) left the sprint")
+        XCTAssertEqual(i.scopeDelta, -8)
+        // Removed work is not Completed work either: C counts only the Done Issue.
+        XCTAssertEqual(i.completedPoints, 8)
+    }
+
+    /// The app installed on day six: the Baseline is captured from the moment of first
+    /// observation, not reconstructed from day one, and nothing has moved since it was seen.
+    func test_evaluate_coldStartMidSprint_capturesBaselineFromNowAndReadsZeroDelta() async throws {
+        XCTAssertEqual(
+            workingCalendar.workingDaysElapsed(now: now, sprintStart: isoDate("2026-09-01T09:00:00Z")),
+            6, "the shared `now` is the sixth Working Day of this sprint — a true cold start"
+        )
+
+        let result = try await evaluate("baseline-cold-start")
+
+        XCTAssertEqual(result.baseline.capturedAt, now, "first observation is not day one")
+        XCTAssertEqual(result.instrument.baselinePoints, result.instrument.liveSprintPoints)
+        XCTAssertEqual(result.instrument.scopeDelta, 0)
+        XCTAssertEqual(
+            result.baseline.entries.map(\.key).sorted(),
+            ["BCS-2001", "BCS-2002", "BCS-2003"]
+        )
+
+        // Re-observing with the just-captured Baseline: it is fixed, and the reading holds.
+        let again = Forecast.evaluate(
+            snapshot: try await snapshot("baseline-cold-start"), identity: operatorIdentity,
+            statusMap: .default, workingCalendar: workingCalendar,
+            baseline: result.baseline, now: now
+        )
+        XCTAssertEqual(again.baseline, result.baseline)
+        XCTAssertEqual(again.instrument, result.instrument)
+    }
+
+    /// A sprint entirely `Dropped`: every Issue was cancelled where it sat. That is flow leaving
+    /// the remaining total — the Dropped figure — not the sprint changing shape: Scope Delta
+    /// stays 0, and the two figures read differently on the panel.
+    func test_evaluate_allDroppedFixture_showsCancelledWorkAsDroppedNotScopeMovement() async throws {
+        let i = try await evaluate("all-dropped").instrument
+
+        XCTAssertEqual(i.droppedPoints, 13, "the Operator's two Cancelled Issues")
+        XCTAssertEqual(i.liveSprintPoints, 26, "the sprint still carries every Issue")
+        XCTAssertEqual(i.baselinePoints, 26, "same Issues, same Estimates as day one")
+        XCTAssertEqual(i.scopeDelta, 0, "cancelling in place is not scope movement")
+        XCTAssertEqual(i.completedPoints, 0, "Dropped Points are never credited as Completed")
+        XCTAssertEqual(i.pointsRemaining, 0)
+        XCTAssertEqual(i.confidenceState, .finished, "nothing Actionable or Waiting survives")
     }
 
     // MARK: - Confidence State: the rate-based bands (rules 6–9)

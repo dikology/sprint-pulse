@@ -1,0 +1,74 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 6,
+  "issues": [
+    {
+      "id": "95001",
+      "key": "SGR-1801",
+      "fields": {
+        "summary": "Bank the walking-skeleton reading",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Done" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 8
+      }
+    },
+    {
+      "id": "95002",
+      "key": "SGR-1802",
+      "fields": {
+        "summary": "Persist the Sprint Baseline across launches",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    },
+    {
+      "id": "95003",
+      "key": "SGR-1803",
+      "fields": {
+        "summary": "Render the Scope Delta row",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 13
+      }
+    },
+    {
+      "id": "95004",
+      "key": "SGR-1804",
+      "fields": {
+        "summary": "Spike the live Jira gateway",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Backlog" },
+        "assignee": { "name": "aivanova", "key": "JIRAUSER10877", "displayName": "Anna Ivanova" },
+        "customfield_10002": 21
+      }
+    },
+    {
+      "id": "95005",
+      "key": "SGR-1805",
+      "fields": {
+        "summary": "Lay out the scope section of the panel",
+        "issuetype": { "name": "Sub-task", "subtask": true },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 99
+      }
+    },
+    {
+      "id": "95006",
+      "key": "SGR-1806",
+      "fields": {
+        "summary": "Triage: Baseline retention across sprints",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "aivanova", "key": "JIRAUSER10877", "displayName": "Anna Ivanova" },
+        "customfield_10002": null
+      }
+    }
+  ]
+}

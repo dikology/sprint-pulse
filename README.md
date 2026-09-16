@@ -29,7 +29,9 @@ separate totals, Completed and Dropped as their own figures, a count of Unestima
 and any Unmapped Status named prominently. Above them sit Working Days Remaining and Elapsed,
 the Required Rate, the Demonstrated Rate, and the Confidence State with the one-line explanation
 of it — the rule that matched, plus any Cap that demoted the reading, spelled out from the
-numbers underneath. The Status Map is shown read-only ([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md));
+numbers underneath. Below them, the sprint's shape: live Points, the Points recorded the first
+time the sprint was observed, and the Scope Delta between them — added scope and removed work
+read as different words, not just different signs. The Status Map is shown read-only ([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md));
 its editor is M1.
 
 ## Status
@@ -45,8 +47,10 @@ States. Caps and the explanation
 ([#7](https://github.com/dikology/sprint-pulse/issues/7)) made the reading say why: `Instrument`
 now carries a `ConfidenceReading` — the rule that matched plus the Caps that fired — and the
 panel renders its one line from that rather than from a guess. Sprint Baseline and Scope Delta
-([#8](https://github.com/dikology/sprint-pulse/issues/8)) and the scenario picker
-([#9](https://github.com/dikology/sprint-pulse/issues/9)) are what is left of M0.
+([#8](https://github.com/dikology/sprint-pulse/issues/8)) closed the attribution gap: the
+Baseline enters and leaves the forecast as a value, and the panel shows whether a moved reading
+is the Operator falling behind or the sprint changing shape. The scenario picker
+([#9](https://github.com/dikology/sprint-pulse/issues/9)) is what is left of M0.
 
 ## Licence
 

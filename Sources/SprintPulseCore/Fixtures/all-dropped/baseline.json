@@ -1,0 +1,9 @@
+{
+  "sprintID": 8004,
+  "capturedAt": "2026-09-01T09:00:52Z",
+  "entries": [
+    { "key": "DRP-2101", "estimate": 8 },
+    { "key": "DRP-2102", "estimate": 5 },
+    { "key": "DRP-2103", "estimate": 13 }
+  ]
+}

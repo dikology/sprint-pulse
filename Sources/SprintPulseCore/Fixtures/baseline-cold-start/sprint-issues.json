@@ -1,0 +1,41 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 3,
+  "issues": [
+    {
+      "id": "95201",
+      "key": "BCS-2001",
+      "fields": {
+        "summary": "Instrument the launch path",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    },
+    {
+      "id": "95202",
+      "key": "BCS-2002",
+      "fields": {
+        "summary": "Write the Baseline to UserDefaults on first read",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Done" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 8
+      }
+    },
+    {
+      "id": "95203",
+      "key": "BCS-2003",
+      "fields": {
+        "summary": "Backfill the fixture corpus audit",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "aivanova", "key": "JIRAUSER10877", "displayName": "Anna Ivanova" },
+        "customfield_10002": 13
+      }
+    }
+  ]
+}
