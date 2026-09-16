@@ -71,7 +71,9 @@ final class ForecastTests: XCTestCase {
                 // C = 0 — the walking skeleton has nothing Done yet, so D is undefined and
                 // Confidence withdraws to `Unknown` (rule 4) rather than guessing.
                 demonstratedRate: nil,
-                confidenceState: .unknown
+                // MOB-1203 is unsized, so the Unestimated Cap fires — but `Unknown` is not a band
+                // on the scale, so there is nothing for it to demote.
+                reading: ConfidenceReading(rule: .insufficientHistory, caps: [.unestimated])
             )
         )
     }
@@ -323,6 +325,96 @@ final class ForecastTests: XCTestCase {
         XCTAssertEqual(i.workingDaysRemaining, 0)
         XCTAssertGreaterThan(i.actionablePoints, 0)
         XCTAssertNil(i.requiredRate, "R = A / WDR is undefined once WDR = 0")
+        XCTAssertEqual(i.confidenceState, .offTrack)
+    }
+
+    // MARK: - Caps: the band rules first, then one demotion each
+
+    /// The Unestimated Cap firing alone. `A = 4` over `WDR = 4` ⇒ R = 1.0; `C = 5` over
+    /// `WDE = 4` ⇒ D = 1.25; the ratio 1.25 clears the `No Sweat` boundary — until one unsized
+    /// Issue in Actionable, which the band rules never looked at, demotes it one band.
+    func test_evaluate_unestimatedCapAlone_demotesNoSweatOneBand() async throws {
+        let i = try await evaluate("cap-unestimated", now: isoDate("2026-09-17T12:00:00Z"))
+
+        XCTAssertEqual(i.unestimatedCount, 1)
+        XCTAssertEqual(i.reading.rule, .ratioNoSweat, "Caps are evaluated after the band rules")
+        XCTAssertEqual(i.reading.uncappedState, .noSweat)
+        XCTAssertEqual(i.reading.caps, [.unestimated])
+        XCTAssertEqual(i.confidenceState, .onTrack)
+    }
+
+    /// The Waiting-heavy Cap firing alone: every Issue is sized, but 8 of the 12 remaining Points
+    /// are in somebody else's queue — 0.667 against the 0.40 boundary. The same `No Sweat` ratio,
+    /// demoted the same one band, on different evidence.
+    func test_evaluate_waitingHeavyCapAlone_demotesNoSweatOneBand() async throws {
+        let i = try await evaluate("cap-waiting-heavy", now: isoDate("2026-09-17T12:00:00Z"))
+
+        XCTAssertEqual(i.actionablePoints, 4)
+        XCTAssertEqual(i.waitingPoints, 8)
+        XCTAssertEqual(i.unestimatedCount, 0)
+        XCTAssertEqual(i.reading.caps, [.waitingHeavy])
+        XCTAssertEqual(i.confidenceState, .onTrack)
+    }
+
+    /// Both Caps firing together, each taking one band: `No Sweat → On Track → Tight`. The Cap
+    /// conditions are independent of the ratio that produced `No Sweat` — unsized work and a
+    /// review queue are both invisible to rules 6–9, which is why they can contradict it.
+    func test_evaluate_bothCapsFire_demotingTwoBands() async throws {
+        let i = try await evaluate("cap-both", now: isoDate("2026-09-17T12:00:00Z"))
+
+        XCTAssertEqual(i.reading.uncappedState, .noSweat)
+        XCTAssertEqual(i.reading.caps, [.unestimated, .waitingHeavy])
+        XCTAssertEqual(i.reading.demotions, 2)
+        XCTAssertEqual(i.confidenceState, .tight)
+    }
+
+    /// Both Cap conditions hold — `A = 0` makes the Waiting share 1.0 — and neither demotes
+    /// anything. `Hands Off` is a named answer, not a band on the scale, so the Explanation must
+    /// name the rule that matched rather than a demotion that cannot happen.
+    func test_evaluate_capsAgainstHandsOff_demoteNothing() async throws {
+        let i = try await evaluate("cap-hands-off", now: isoDate("2026-09-17T12:00:00Z"))
+
+        XCTAssertEqual(i.actionablePoints, 0)
+        XCTAssertEqual(i.reading.rule, .nothingActionableRemaining)
+        XCTAssertEqual(i.reading.caps, [.unestimated, .waitingHeavy])
+        XCTAssertEqual(i.reading.demotions, 0)
+        XCTAssertEqual(i.confidenceState, .handsOff)
+    }
+
+    /// Rule 4 withdraws the answer before any ratio is taken. The Caps are true of the data and
+    /// demote nothing: withdrawing is not a band to fall from.
+    func test_evaluate_capsAgainstUnknown_demoteNothing() async throws {
+        let i = try await evaluate("cap-unknown", now: isoDate("2026-09-17T12:00:00Z"))
+
+        XCTAssertEqual(i.completedPoints, 0)
+        XCTAssertEqual(i.reading.rule, .insufficientHistory)
+        XCTAssertEqual(i.reading.caps, [.unestimated, .waitingHeavy])
+        XCTAssertEqual(i.confidenceState, .unknown)
+    }
+
+    /// `Off Track` is the bottom of the scale: two Caps fired and there is nowhere left to walk.
+    /// The Reading keeps both — they hold — without claiming a demotion it did not perform.
+    func test_evaluate_capsAtTheBottomOfTheScale_demoteNothingFurther() async throws {
+        let i = try await evaluate("cap-at-bottom", now: isoDate("2026-09-17T12:00:00Z"))
+
+        XCTAssertEqual(i.requiredRate, 2.0)
+        XCTAssertEqual(i.demonstratedRate, 0.5)
+        XCTAssertEqual(i.reading.uncappedState, .offTrack)
+        XCTAssertEqual(i.reading.caps, [.unestimated, .waitingHeavy])
+        XCTAssertEqual(i.reading.demotions, 0)
+        XCTAssertEqual(i.confidenceState, .offTrack)
+    }
+
+    /// #7 changed a displayed state in the existing corpus, so it is pinned here rather than left
+    /// to a suite that only checks this fixture's Points rows: #4's all-flow-states sprint is a
+    /// Waiting-heavy one, and the Cap now takes its `Tight` down a band.
+    func test_evaluate_allFlowStatesFixture_isWaitingHeavySoItsTightIsCapped() async throws {
+        let i = try await evaluate("all-flow-states").instrument
+
+        XCTAssertEqual(i.actionablePoints, 10)
+        XCTAssertEqual(i.waitingPoints, 9, "9 of 19 remaining Points — 0.474, over the 40% line")
+        XCTAssertEqual(i.reading.uncappedState, .tight, "D 13÷6 against R 10÷4 is a ratio of 0.867")
+        XCTAssertEqual(i.reading.caps, [.waitingHeavy])
         XCTAssertEqual(i.confidenceState, .offTrack)
     }
 }

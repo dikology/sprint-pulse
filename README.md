@@ -26,7 +26,10 @@ swift run SprintPulse   # the menu-bar app, on fixtures
 The menu-bar app currently runs entirely on fixtures — no Jira, no network, no credential.
 It shows Points per Flow State for the Active Sprint's My Work: Actionable and Waiting as
 separate totals, Completed and Dropped as their own figures, a count of Unestimated Issues,
-and any Unmapped Status named prominently. The Status Map is shown read-only ([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md));
+and any Unmapped Status named prominently. Above them sit Working Days Remaining and Elapsed,
+the Required Rate, the Demonstrated Rate, and the Confidence State with the one-line explanation
+of it — the rule that matched, plus any Cap that demoted the reading, spelled out from the
+numbers underneath. The Status Map is shown read-only ([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md));
 its editor is M1.
 
 ## Status
@@ -34,8 +37,16 @@ its editor is M1.
 Milestone **M0** — the offline instrument. The walking skeleton
 ([#3](https://github.com/dikology/sprint-pulse/issues/3)) established both seams, the package
 boundary, and the testing pattern. Flow States and the Status Map
-([#4](https://github.com/dikology/sprint-pulse/issues/4)) turn the single Points figure into
-Points per Flow State. Working Days Remaining (#5) and the forecast proper (#6) come next.
+([#4](https://github.com/dikology/sprint-pulse/issues/4)) turned the single Points figure into
+Points per Flow State, Working Days Remaining
+([#5](https://github.com/dikology/sprint-pulse/issues/5)) the calendar, and the forecast proper
+([#6](https://github.com/dikology/sprint-pulse/issues/6)) the two rates and the Confidence
+States. Caps and the explanation
+([#7](https://github.com/dikology/sprint-pulse/issues/7)) made the reading say why: `Instrument`
+now carries a `ConfidenceReading` — the rule that matched plus the Caps that fired — and the
+panel renders its one line from that rather than from a guess. Sprint Baseline and Scope Delta
+([#8](https://github.com/dikology/sprint-pulse/issues/8)) and the scenario picker
+([#9](https://github.com/dikology/sprint-pulse/issues/9)) are what is left of M0.
 
 ## Licence
 

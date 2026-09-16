@@ -109,6 +109,13 @@ Caps are evaluated after rules 6–9 and apply at most once each:
 
 Both Caps may fire, demoting two bands in total.
 
+A Cap's condition is read only once the table has answered — including when the answer came from
+rules 1–5, whose states sit off the scale. So a Cap **fires** whenever its condition holds,
+whether or not it found a band to demote: against `Off Track`, and against `Unknown`, `Hands Off`
+and `Finished`, it fires and moves nothing. The Reading carries the fired Caps beside the count of
+bands actually lost, which is how the interface explains a demotion exactly when one happened and
+never claims one that did not. See CONTEXT *Reading* and *Explanation*.
+
 ## Scope
 
 | Term | Definition |

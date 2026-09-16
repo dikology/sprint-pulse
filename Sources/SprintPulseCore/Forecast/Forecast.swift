@@ -9,8 +9,9 @@ import Foundation
 /// date is an argument so tests can pin "today".
 ///
 /// #4 partitions My Work by Flow State through the Status Map. #5 adds Working Days Remaining
-/// through the `WorkingCalendar`. #6 adds the rates and the Confidence State. Caps and a
-/// structured explanation (#7) extend this function further; they do not replace it.
+/// through the `WorkingCalendar`. #6 adds the rates and the Confidence State. #7 adds the Caps
+/// and the `ConfidenceReading` that explains the result; each extended this function's outputs
+/// without replacing its predecessors.
 public enum Forecast {
     public static func evaluate(
         snapshot: SprintSnapshot,
@@ -85,12 +86,13 @@ public enum Forecast {
             ? completedPoints / Double(workingDaysElapsed)
             : nil
 
-        let confidenceState = ConfidenceState.evaluate(
+        let reading = ConfidenceReading.evaluate(
             unmappedStatusPresent: !unmapped.isEmpty,
             actionablePoints: actionablePoints,
             waitingPoints: waitingPoints,
             requiredRate: requiredRate,
-            demonstratedRate: demonstratedRate
+            demonstratedRate: demonstratedRate,
+            unestimatedCount: unestimatedCount
         )
 
         let instrument = Instrument(
@@ -102,7 +104,7 @@ public enum Forecast {
             workingDaysElapsed: workingDaysElapsed,
             requiredRate: requiredRate,
             demonstratedRate: demonstratedRate,
-            confidenceState: confidenceState
+            reading: reading
         )
 
         let updatedBaseline: SprintBaseline

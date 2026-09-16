@@ -3,6 +3,9 @@ import Foundation
 /// The relationship between Demonstrated Rate and Required Rate, expressed on a named scale
 /// (CONTEXT "Confidence State"). A stated comparison of two visible numbers, never a percentage
 /// or a probability.
+///
+/// The `unknown`, `handsOff` and `finished` cases are named answers rather than bands: a Cap
+/// never demotes them, because there is no lower band to move to (`demotedOneBand`).
 public enum ConfidenceState: Sendable, Equatable {
     /// Too little is known to say anything: fewer than two elapsed Working Days, zero Completed
     /// Points, or any Unmapped Status present. (A stale cache also forces this in M1, once a
@@ -20,41 +23,36 @@ public enum ConfidenceState: Sendable, Equatable {
     case finished
 }
 
-/// The band boundaries on the `Demonstrated Rate ÷ Required Rate` ratio, kept in exactly one
-/// place because they are expected to need calibration (`docs/agents/glossary.md`).
+/// The boundaries of the Confidence scale, kept in exactly one place because they are expected
+/// to need calibration (`docs/agents/glossary.md`).
+///
+/// The first three are the band boundaries on the `Demonstrated Rate ÷ Required Rate` ratio; the
+/// fourth is the Waiting-heavy Cap's boundary, which lives here for the same reason and is named
+/// by the same mechanism — a reader checking a displayed demotion by hand finds every threshold
+/// the Reading used in one file.
 public enum ConfidenceBands {
     public static let noSweat = 1.25
     public static let onTrack = 1.00
     public static let tight = 0.75
+    /// A Waiting share above this fraction of the remaining Points caps Confidence by one band.
+    /// Strict: exactly this value does not fire.
+    public static let waitingHeavy = 0.40
 }
 
 extension ConfidenceState {
-    /// The nine-rule evaluation table from `docs/agents/glossary.md`, in the specified order,
-    /// first match winning. **That table is normative: this is a direct transcription, not a
-    /// re-derivation, and the order must not change.**
+    /// The band one place lower along `No Sweat → On Track → Tight → Off Track` — the path a Cap
+    /// walks a Reading down (glossary §Caps).
     ///
-    /// Rules 1–5 make the function total: `requiredRate` and `demonstratedRate` are `nil` under
-    /// exactly the conditions rules 4–5 check for (see `Forecast.evaluate`, the sole place either
-    /// division is performed), so by the time the ratio is taken both are defined and the
-    /// `Required Rate` is positive. No `A/0` or `C/0` is ever reached.
-    public static func evaluate(
-        unmappedStatusPresent: Bool,
-        actionablePoints: Double,
-        waitingPoints: Double,
-        requiredRate: Double?,
-        demonstratedRate: Double?
-    ) -> ConfidenceState {
-        if unmappedStatusPresent { return .unknown }                                   // Rule 1
-        if actionablePoints == 0 && waitingPoints == 0 { return .finished }             // Rule 2
-        if actionablePoints == 0 && waitingPoints > 0 { return .handsOff }              // Rule 3
-        guard let demonstratedRate else { return .unknown }                            // Rule 4
-        guard let requiredRate else { return .offTrack }                               // Rule 5
-
-        let ratio = demonstratedRate / requiredRate
-
-        if ratio >= ConfidenceBands.noSweat { return .noSweat }                        // Rule 6
-        if ratio >= ConfidenceBands.onTrack { return .onTrack }                        // Rule 7
-        if ratio >= ConfidenceBands.tight { return .tight }                            // Rule 8
-        return .offTrack                                                              // Rule 9
+    /// `nil` where there is nowhere lower to go: the bottom band, and the three named answers
+    /// (`Unknown`, `Hands Off`, `Finished`) that are not points on the scale at all. A Cap never
+    /// promotes (CONTEXT invariant 5), which is why this is a one-way step rather than an index
+    /// into an ordered list of states — `ConfidenceState` deliberately has no ordering.
+    public var demotedOneBand: ConfidenceState? {
+        switch self {
+        case .noSweat: return .onTrack
+        case .onTrack: return .tight
+        case .tight: return .offTrack
+        case .offTrack, .unknown, .handsOff, .finished: return nil
+        }
     }
 }

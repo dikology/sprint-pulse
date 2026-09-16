@@ -136,6 +136,18 @@ everything that is yours to do, without the sprint being finished.
 **Cap**:
 A condition that demotes the displayed Confidence State by one band. Caps only ever demote.
 
+**Reading**:
+The pair of facts behind a displayed Confidence State — the rule of the Confidence table that
+matched, and the Caps that fired. Carried as data, so the Explanation can be generated from the
+same facts the number was.
+_Avoid_: verdict, judgement, score
+
+**Explanation**:
+The one-line account of a displayed Confidence State, generated from its Reading — the rule that
+matched and the Caps that fired. A demotion is never shown without its Explanation, and a Reading
+that was not demoted never claims one.
+_Avoid_: reason, tooltip, justification
+
 **Sprint Baseline**:
 A snapshot of the Active Sprint's Issues and Estimates, taken the first time Sprint Pulse
 observes the sprint as active. It exists to explain change, never to be forecast against.
@@ -161,3 +173,6 @@ _Avoid_: scope creep, churn
    basis of a forecast.
 10. Every number shown must be reproducible by hand from other numbers shown on the same screen.
 11. An Intent with no legal Jira transition is absent from the interface, not disabled or errored.
+12. A displayed Confidence State always carries its Reading — the rule that matched and the Caps
+    that fired — as data. Its Explanation is rendered from that Reading and re-derives no
+    arithmetic of its own.

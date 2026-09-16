@@ -1,0 +1,18 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "isLast": true,
+  "values": [
+    {
+      "id": 7102,
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/7102",
+      "state": "active",
+      "name": "Cap Waiting Heavy Sprint",
+      "startDate": "2026-09-14T09:00:00.000+0000",
+      "endDate": "2026-09-22T17:00:00.000+0000",
+      "activatedDate": "2026-09-14T09:03:00.000+0000",
+      "originBoardId": 172,
+      "goal": "Every Issue sized, but two thirds of the remaining Points sit in review: the Waiting-heavy Cap demotes No Sweat one band."
+    }
+  ]
+}

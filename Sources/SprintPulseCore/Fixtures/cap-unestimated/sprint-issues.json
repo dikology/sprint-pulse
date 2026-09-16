@@ -1,0 +1,41 @@
+{
+  "expand": "schema,names",
+  "startAt": 0,
+  "maxResults": 50,
+  "total": 3,
+  "issues": [
+    {
+      "id": "98101",
+      "key": "CAPU-2501",
+      "fields": {
+        "summary": "Sized work still to do",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Open" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 4
+      }
+    },
+    {
+      "id": "98102",
+      "key": "CAPU-2502",
+      "fields": {
+        "summary": "Work nobody has sized — the whole point of this fixture",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "In Progress" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": null
+      }
+    },
+    {
+      "id": "98103",
+      "key": "CAPU-2503",
+      "fields": {
+        "summary": "Work finished so far",
+        "issuetype": { "name": "Task", "subtask": false },
+        "status": { "name": "Done" },
+        "assignee": { "name": "dgimaletdinov", "key": "JIRAUSER10500", "displayName": "Denis Gimaletdinov" },
+        "customfield_10002": 5
+      }
+    }
+  ]
+}

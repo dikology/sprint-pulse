@@ -13,7 +13,7 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let instrument = panel.instrument {
-                reading(instrument)
+                forecast(instrument)
             } else if let loadError = panel.loadError {
                 Text("Could not read the fixture")
                     .font(.headline)
@@ -37,7 +37,7 @@ struct PanelView: View {
     }
 
     @ViewBuilder
-    private func reading(_ instrument: Instrument) -> some View {
+    private func forecast(_ instrument: Instrument) -> some View {
         Text(instrument.sprintName)
             .font(.headline)
 
@@ -49,14 +49,18 @@ struct PanelView: View {
                 .font(.subheadline.bold())
         }
 
-        HStack {
-            Text("Working Days Remaining")
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text("\(instrument.workingDaysRemaining)")
-                .font(.callout.monospacedDigit())
-        }
-        .font(.callout)
+        // The Reading explains itself. A forecast that cannot be argued with is a score to be
+        // trusted, which is the failure this project exists to avoid (`docs/agents/product.md`).
+        Text(explanation(for: instrument))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        daysRow("Working Days Remaining", instrument.workingDaysRemaining)
+        // Both rates' denominators on screen: Required Rate is Actionable Points over the
+        // remaining days, Demonstrated Rate Completed Points over the elapsed ones, and neither
+        // is reproducible by hand without the day count it was divided by (invariant 10).
+        daysRow("Working Days Elapsed", instrument.workingDaysElapsed)
 
         HStack {
             Text("Required Rate")
@@ -148,6 +152,18 @@ struct PanelView: View {
         }
     }
 
+    /// A count of Working Days, labelled. Plain integer: the day is the unit the rates divide by,
+    /// so it is shown unreduced rather than as a fraction of the sprint.
+    @ViewBuilder
+    private func daysRow(_ label: String, _ days: Int) -> some View {
+        HStack {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text("\(days)").font(.callout.monospacedDigit())
+        }
+        .font(.callout)
+    }
+
     @ViewBuilder
     private func pointsRow(_ label: String, _ points: Double, indented: Bool = false) -> some View {
         HStack {
@@ -183,6 +199,65 @@ struct PanelView: View {
         case .noSweat: return "No Sweat"
         case .handsOff: return "Hands Off"
         case .finished: return "Finished"
+        }
+    }
+
+    /// The one-line account of a Reading: the rule that matched, and — only when a Cap actually
+    /// moved the state — where it came from and which Caps did it.
+    ///
+    /// Generated entirely from `Instrument.reading` plus figures the panel already shows, so the
+    /// sentence can be checked against the numbers above it (CONTEXT invariant 10). The view does
+    /// no arithmetic of its own beyond formatting: it quotes the Waiting and Actionable subtotals
+    /// rather than recomputing a share the domain already took.
+    ///
+    /// Caps that found nowhere to demote are absent from this line by design: `demotions` is the
+    /// only authority on whether the state moved, so a demotion is never unexplained and a
+    /// Reading that stands where the table left it never claims to have been capped.
+    private func explanation(for instrument: Instrument) -> String {
+        let reading = instrument.reading
+        let ruleClause = switch reading.rule {
+        case .unmappedStatus:
+            "Confidence withdraws: an Unmapped Status leaves its Issues outside every total."
+        case .nothingRemaining:
+            "No Actionable or Waiting Points remain."
+        case .nothingActionableRemaining:
+            "Nothing you can move remains — \(PanelModel.formatted(instrument.waitingPoints)) Waiting Points are in someone else's hands."
+        case .insufficientHistory:
+            "Confidence withdraws — nothing to compare yet: \(workingDays(instrument.workingDaysElapsed)) elapsed, \(PanelModel.formatted(instrument.completedPoints)) Points completed."
+        case .workingDaysExhausted:
+            "\(PanelModel.formatted(instrument.actionablePoints)) Actionable Points remain and no Working Days do."
+        case .ratioNoSweat, .ratioOnTrack, .ratioTight, .ratioOffTrack:
+            "Demonstrated \(rate(instrument.demonstratedRate)) against Required \(rate(instrument.requiredRate))."
+        }
+
+        guard reading.demotions > 0 else { return ruleClause }
+        let caps = reading.caps.map { capPhrase($0, instrument: instrument) }.joined(separator: "; ")
+        let bands = reading.demotions == 1 ? "one band" : "\(reading.demotions) bands"
+        let from = label(for: reading.uncappedState)
+        let to = label(for: reading.state)
+        return "\(ruleClause) Capped \(bands) from \(from) to \(to): \(caps)."
+    }
+
+    /// "3 Working Days", or "1 Working Day" — the count reads as prose inside the Explanation.
+    private func workingDays(_ count: Int) -> String {
+        "\(count) Working Day\(count == 1 ? "" : "s")"
+    }
+
+    /// A fired Cap as the reader checks it: the figures on screen behind the condition, named
+    /// rather than re-derived.
+    private func capPhrase(_ cap: Cap, instrument: Instrument) -> String {
+        switch cap {
+        case .unestimated:
+            let count = instrument.unestimatedCount
+            return "\(count) unsized issue\(count == 1 ? "" : "s")"
+        case .waitingHeavy:
+            // The two subtotals the reader sees labelled on screen, not the share between them:
+            // the addition and the comparison to the line are theirs to do, not the panel's to
+            // re-compute (invariant 10).
+            let percent = Int(ConfidenceBands.waitingHeavy * 100)
+            let waiting = PanelModel.formatted(instrument.waitingPoints)
+            let actionable = PanelModel.formatted(instrument.actionablePoints)
+            return "\(waiting) Waiting against \(actionable) Actionable Points, over the \(percent)% line"
         }
     }
 

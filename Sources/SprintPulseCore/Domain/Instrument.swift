@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The panel holds no forecast logic: it displays the fields of an `Instrument` and nothing
 /// more. Each M0 ticket widens this type — Flow States and Points per Flow State (#4), Working
-/// Days Remaining (#5), the rates and Confidence State (#6). Caps and a structured explanation
-/// (#7) widen it further.
+/// Days Remaining (#5), the rates and Confidence State (#6), and the `ConfidenceReading` that
+/// explains them (#7).
 public struct Instrument: Equatable, Sendable {
     /// The Active Sprint's name, for the panel header.
     public let sprintName: String
@@ -45,9 +45,16 @@ public struct Instrument: Equatable, Sendable {
     /// completing Points. `nil` before `WDE ≥ 2` or while `C = 0`.
     public let demonstratedRate: Double?
 
-    /// The named Confidence State, evaluated by the nine-rule table in
-    /// `docs/agents/glossary.md`.
-    public let confidenceState: ConfidenceState
+    /// The named Confidence State to display — the band rules demoted by whatever Caps fired.
+    /// Derived from `reading`, never stored beside it, so the number and its Explanation cannot
+    /// drift apart.
+    public var confidenceState: ConfidenceState { reading.state }
+
+    /// The structured basis of the displayed state: which rule matched and which Caps fired
+    /// (CONTEXT "Reading", #7). The panel renders its one-line Explanation from this and
+    /// re-derives no arithmetic of its own — a forecast that cannot be argued with is a score to
+    /// be trusted, which is the failure `docs/agents/product.md` exists to avoid.
+    public let reading: ConfidenceReading
 
     public init(
         sprintName: String,
@@ -58,7 +65,7 @@ public struct Instrument: Equatable, Sendable {
         workingDaysElapsed: Int,
         requiredRate: Double?,
         demonstratedRate: Double?,
-        confidenceState: ConfidenceState
+        reading: ConfidenceReading
     ) {
         self.sprintName = sprintName
         self.pointsByFlowState = pointsByFlowState
@@ -68,7 +75,7 @@ public struct Instrument: Equatable, Sendable {
         self.workingDaysElapsed = workingDaysElapsed
         self.requiredRate = requiredRate
         self.demonstratedRate = demonstratedRate
-        self.confidenceState = confidenceState
+        self.reading = reading
     }
 
     /// Points in one Flow State. `0` for an absent or wholly-unestimated set.
