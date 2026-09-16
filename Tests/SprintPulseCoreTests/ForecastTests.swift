@@ -6,12 +6,24 @@ final class ForecastTests: XCTestCase {
     /// their `key` so key-vs-name matching is actually exercised.
     let operatorIdentity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
 
-    /// A pinned "today" inside the fixtures' sprint window.
+    /// A pinned "today" inside the fixtures' sprint window: the shared moment of the
+    /// structural and Scope scenarios — each of which bundles the same date in its own
+    /// `now.json`. Confidence and Cap scenarios pin their own moments, resolved per fixture.
     let now = isoDate("2026-09-08T12:00:00Z")
 
     /// Monday–Friday, pinned to UTC so `workingDaysRemaining` is deterministic regardless of the
     /// machine running the tests.
     let workingCalendar = WorkingCalendar(timeZone: TimeZone(identifier: "UTC")!)
+
+    /// The moment a scenario pins in its own `now.json` — the same value the panel loads the
+    /// scenario at (#9), so a test can only ever pass on the observation the Operator will
+    /// see by clicking.
+    private func pinnedNow(_ fixture: String) throws -> Date {
+        try XCTUnwrap(
+            FixtureJiraGateway.pinnedNow(named: fixture),
+            "\(fixture): a scenario without a pinned moment drifts out of the state it claims"
+        )
+    }
 
     private func snapshot(_ fixture: String) async throws -> SprintSnapshot {
         let gateway = try FixtureJiraGateway.bundled(named: fixture)
@@ -23,17 +35,14 @@ final class ForecastTests: XCTestCase {
     /// The stored-Baseline half of a Scope Delta scenario, bundled beside the Jira-shaped
     /// responses. Deliberately not a gateway concern: the Baseline is Sprint Pulse's own
     /// persisted value, not something Jira returns. `nil` for fixtures without one — those
-    /// are first-observation scenarios.
+    /// are first-observation scenarios. Read through the core helper the app's scenario
+    /// loading uses, so tests and panel see the same day-one snapshot.
     private func bundledBaseline(_ fixture: String) throws -> SprintBaseline? {
-        let url = try FixtureJiraGateway.bundledDirectory(named: fixture)
-            .appendingPathComponent("baseline.json")
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(SprintBaseline.self, from: data)
+        try FixtureJiraGateway.bundledBaseline(named: fixture)
     }
 
     private func evaluate(_ fixture: String, baseline: SprintBaseline? = nil) async throws -> (instrument: Instrument, baseline: SprintBaseline) {
+        XCTAssertEqual(now, try pinnedNow(fixture), "\(fixture): the shared moment and the scenario's own pin disagree")
         let stored = try bundledBaseline(fixture)
         return Forecast.evaluate(
             snapshot: try await snapshot(fixture),
@@ -46,10 +55,14 @@ final class ForecastTests: XCTestCase {
     }
 
     /// For the Confidence fixtures, each of which is pinned against its own "now" rather than
-    /// the shared one above. Resolves the bundled Baseline the same way the primary helper
-    /// does, so one fixture name means one scenario in this file.
+    /// the shared one above — and pinned *twice*, here in the test and in the scenario's
+    /// `now.json`, checked against each other: this literal documents the moment, the pin is
+    /// what the panel loads, and a drift between them is a picker that lies (#9). Resolves
+    /// the bundled Baseline the same way the primary helper does, so one fixture name means
+    /// one scenario in this file.
     private func evaluate(_ fixture: String, now: Date) async throws -> Instrument {
-        Forecast.evaluate(
+        XCTAssertEqual(now, try pinnedNow(fixture), "\(fixture): the test's moment and the scenario's own pin disagree")
+        return Forecast.evaluate(
             snapshot: try await snapshot(fixture),
             identity: operatorIdentity,
             statusMap: .default,

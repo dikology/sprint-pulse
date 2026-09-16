@@ -6,12 +6,19 @@ import SprintPulseCore
 /// forecast logic of its own. Every number shown is reproducible by hand from the others on
 /// screen (CONTEXT invariant 10): the per-Flow-State rows sum to the Actionable and Waiting
 /// totals.
+///
+/// Two properties of the whole panel are load-bearing (#9): it ships with no motion — no
+/// spinner, no animating disclosure, nothing that loops and demands peripheral attention —
+/// and nothing conveys meaning by image or colour alone, so every row reads usefully under
+/// VoiceOver.
 struct PanelView: View {
     @ObservedObject var panel: PanelModel
     @State private var statusMapExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            scenarioPicker
+
             if let instrument = panel.instrument {
                 forecast(instrument)
             } else if let loadError = panel.loadError {
@@ -22,7 +29,12 @@ struct PanelView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             } else {
-                ProgressView().controlSize(.small)
+                // Static text, not a spinner: an indeterminate `ProgressView` loops, and M0
+                // ships with no motion at all. This state lasts one fixture read on first
+                // launch, not a watchable interval.
+                Text("Reading the fixture")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Divider()
@@ -36,10 +48,33 @@ struct PanelView: View {
         .frame(width: 280)
     }
 
+    /// The corpus browser (#9): every state the instrument can reach is one click away. The
+    /// entries are `FixtureScenario.allCases`, which `FixtureCorpusTests` pins to the corpus
+    /// directories in both directions — a fixture the picker cannot load, or a picker entry
+    /// with no fixture, fails the suite rather than surfacing as a dead option.
+    @ViewBuilder
+    private var scenarioPicker: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Picker("Fixture scenario", selection: $panel.scenario) {
+                ForEach(FixtureScenario.allCases) { scenario in
+                    Text(title(for: scenario)).tag(scenario)
+                }
+            }
+            .pickerStyle(.menu)
+            // The no-credential promise, stated where the Operator looks first: fixture mode
+            // is the default and first launch presents no authentication wall (#9).
+            Text("Fixture mode — no credential is configured, and none is needed.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     @ViewBuilder
     private func forecast(_ instrument: Instrument) -> some View {
         Text(instrument.sprintName)
             .font(.headline)
+            .accessibilityAddTraits(.isHeader)
 
         HStack {
             Text("Confidence")
@@ -48,6 +83,7 @@ struct PanelView: View {
             Text(label(for: instrument.confidenceState))
                 .font(.subheadline.bold())
         }
+        .accessibilityElement(children: .combine)
 
         // The Reading explains itself. A forecast that cannot be argued with is a score to be
         // trusted, which is the failure this project exists to avoid (`docs/agents/product.md`).
@@ -62,26 +98,12 @@ struct PanelView: View {
         // is reproducible by hand without the day count it was divided by (invariant 10).
         daysRow("Working Days Elapsed", instrument.workingDaysElapsed)
 
-        HStack {
-            Text("Required Rate")
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(rate(instrument.requiredRate))
-                .font(.callout.monospacedDigit())
-        }
-        .font(.callout)
-
-        HStack {
-            Text("Demonstrated Rate")
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(rate(instrument.demonstratedRate))
-                .font(.callout.monospacedDigit())
-        }
-        .font(.callout)
+        rateRow("Required Rate", instrument.requiredRate)
+        rateRow("Demonstrated Rate", instrument.demonstratedRate)
 
         // An Unmapped Status is surfaced prominently, naming the status. Its Issues are in no
-        // set below.
+        // set below. The warning reads as one utterance — the icon and colour emphasise it,
+        // the words carry it (#9).
         if !instrument.unmappedStatuses.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 Label("Unmapped status", systemImage: "exclamationmark.triangle.fill")
@@ -94,6 +116,7 @@ struct PanelView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .combine)
         }
 
         flowSection("Actionable", states: FlowState.actionable, instrument: instrument)
@@ -112,12 +135,25 @@ struct PanelView: View {
                 .font(.callout.monospacedDigit())
         }
         .font(.callout)
+        .accessibilityElement(children: .combine)
 
         // The scope figures (#8): what the sprint holds now, what it held when first observed,
         // and the difference. Both operands sit beside the Delta so it stays reproducible by
         // hand (invariant 10), and they are sprint-wide by design — scope moves through Issues
         // that are not the Operator's.
-        pointsRow("Live Sprint Points", instrument.liveSprintPoints)
+        //
+        // The live operand is also the Team Scope total (#9): every Issue in the sprint,
+        // regardless of assignee. It is one number with one row, not a second figure to
+        // reconcile, and it is deliberately the dimmest thing on the panel — context, never a
+        // reading. No forecast, Confidence State, or rate is ever attached to team scope
+        // (ADR-0001, CONTEXT invariant 6); the honest way to show that is a bare total with
+        // the disclaimer beside it, and nothing else.
+        pointsRow("Team Scope", instrument.liveSprintPoints)
+            .foregroundStyle(.secondary)
+        Text("Every Issue in the sprint, not only yours. No forecast is computed over team scope.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         pointsRow("Baseline Points", instrument.baselinePoints)
         HStack {
             Text("Scope Delta")
@@ -127,10 +163,30 @@ struct PanelView: View {
                 .font(.callout.monospacedDigit())
         }
         .font(.callout)
+        .accessibilityElement(children: .combine)
 
         Divider()
 
-        DisclosureGroup("Status Map (read-only)", isExpanded: $statusMapExpanded) {
+        // A plain button rather than a `DisclosureGroup`: the system disclosure animates its
+        // rows open, and M0 ships with no motion at all (#9). The state lives in the row's
+        // visibility — spelled out below, because a collapsed chevron rotating into an
+        // upward one is exactly the kind of meaning an image alone must not carry.
+        Button {
+            statusMapExpanded.toggle()
+        } label: {
+            HStack {
+                Text("Status Map (read-only)")
+                Spacer()
+                Image(systemName: statusMapExpanded ? "chevron.up" : "chevron.down")
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .font(.caption)
+        .accessibilityValue(statusMapExpanded ? "expanded" : "collapsed")
+
+        if statusMapExpanded {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(panel.statusMap.rows, id: \.jiraStatus) { entry in
                     HStack {
@@ -138,12 +194,12 @@ struct PanelView: View {
                         Spacer()
                         Text(label(for: entry.flowState)).foregroundStyle(.secondary)
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
             .font(.caption)
             .padding(.top, 2)
         }
-        .font(.caption)
     }
 
     /// One Flow-State group — its subtotal and a row per state. The subtotal is the sum of the
@@ -156,11 +212,13 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text(title).bold()
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Text(PanelModel.formatted(subtotal))
                     .font(.body.monospacedDigit())
                     .bold()
             }
+            .accessibilityElement(children: .combine)
             ForEach(states, id: \.self) { state in
                 pointsRow(label(for: state), instrument.points(state), indented: true)
             }
@@ -177,6 +235,7 @@ struct PanelView: View {
             Text("\(days)").font(.callout.monospacedDigit())
         }
         .font(.callout)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -188,6 +247,23 @@ struct PanelView: View {
         }
         .font(.callout)
         .padding(.leading, indented ? 12 : 0)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// A rate row. The spoken label is written out rather than left to the on-screen glyphs:
+    /// `—` is a hedge a screen reader reads as punctuation, and "3.25/day" is a fraction, not
+    /// the rate it names — the same figures, said as sentences (#9).
+    private func rateRow(_ label: String, _ value: Double?) -> some View {
+        let spoken = value.map { String(format: "%.2f", $0) + " Points per day" } ?? "no reading yet"
+        return HStack {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text(rate(value))
+                .font(.callout.monospacedDigit())
+        }
+        .font(.callout)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(spoken)")
     }
 
     /// The panel's label for a Flow State. Display text is a view concern; the domain enum
@@ -214,6 +290,38 @@ struct PanelView: View {
         case .noSweat: return "No Sweat"
         case .handsOff: return "Hands Off"
         case .finished: return "Finished"
+        }
+    }
+
+    /// The picker's name for a fixture scenario: what the Operator will see if they click it,
+    /// in the panel's own vocabulary. Display text stays in the view — `FixtureScenario`
+    /// carries only the corpus (the #9 convention, as with every `label(for:)` here).
+    private func title(for scenario: FixtureScenario) -> String {
+        switch scenario {
+        case .walkingSkeleton: return "Walking Skeleton — first observation"
+        case .confidenceColdStart: return "Unknown — one Working Day elapsed"
+        case .confidenceZeroCompleted: return "Unknown — nothing Completed yet"
+        case .unmappedStatus: return "Unknown — Unmapped Status present"
+        case .confidenceOffTrack: return "Off Track — behind the Required Rate"
+        case .confidenceDaysExhausted: return "Off Track — no Working Days Remaining"
+        case .confidenceTight: return "Tight — ratio at 0.75"
+        case .confidenceOnTrack: return "On Track — ratio at 1.00"
+        case .confidenceNoSweat: return "No Sweat — ratio at 1.25"
+        case .confidenceHandsOff: return "Hands Off — only Waiting Points remain"
+        case .confidenceFinished: return "Finished — nothing left to move"
+        case .capUnestimated: return "Unestimated Cap firing alone"
+        case .capWaitingHeavy: return "Waiting-heavy Cap firing alone"
+        case .capBoth: return "Both Caps firing — two bands lost"
+        case .capAtBottom: return "Caps firing at the bottom of the scale"
+        case .capHandsOff: return "Caps against Hands Off — nothing demoted"
+        case .capUnknown: return "Caps against Unknown — nothing demoted"
+        case .scopeGrowth: return "Scope — 34 Points added mid-sprint"
+        case .scopeShrink: return "Scope — 8 Points removed mid-sprint"
+        case .baselineColdStart: return "Scope — cold start, Delta 0"
+        case .allDropped: return "A sprint entirely Dropped"
+        case .allFlowStates: return "Every Flow State in one sprint"
+        case .unestimatedAcrossStates: return "Unestimated Issues across Actionable and Waiting"
+        case .subtasksWithEstimates: return "Sub-tasks with Estimates, ignored"
         }
     }
 

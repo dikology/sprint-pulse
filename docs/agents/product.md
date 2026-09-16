@@ -123,13 +123,20 @@ simply absent — the same rule as an Intent with no legal transition.
 ## Fixtures
 
 Fixtures are JSON in the exact shape of Jira Data Center's responses, served through the same
-gateway as the live client. `SprintPulseCore` cannot tell which it is talking to. One deliberate
-exception: a Scope Delta scenario also carries `baseline.json`, the stored Sprint Baseline in
-the app's own JSON (#8) — the Baseline is never something Jira returns, so it is part of the
-scenario but never passes through the gateway.
+gateway as the live client. `SprintPulseCore` cannot tell which it is talking to. Two
+deliberate exceptions, both of them the app's own values rather than something Jira returns,
+part of the scenario but never passing through the gateway: a Scope Delta scenario also carries
+`baseline.json`, the stored Sprint Baseline in the app's own JSON (#8); and every scenario
+pins the moment it is read at in `now.json` — a fixture is a *frozen observation*, and read
+against the wall clock the same sprint walks past its end date and shows a different Confidence
+State than the scenario is named for (#9).
 
 Fixture mode is the **default whenever no credential exists**, so the app is fully explorable
-before anything is authenticated. Fixtures are the project's test corpus, not a demo: the set
+before anything is authenticated. The panel's scenario picker (#9) lists the whole corpus, so
+every reachable state is reachable by clicking; the picker's list is pinned to the fixture
+directories by a test, which is also where the corpus is audited against the scenario list — a
+fixture without a test, or a scenario the picker cannot load, fails the suite rather than
+shipping invisible. Fixtures are the project's test corpus, not a demo: the set
 covers every reachable state — each Confidence State, both Caps firing, an `Unmapped Status`
 present, `Hands Off`, a large Scope Delta, a mid-sprint cold start, and a sprint entirely
 `Dropped`. A state absent from the fixtures is untestable and will ship broken.
@@ -141,6 +148,10 @@ gathering cloud; `Off Track` is a long climb in bad light. Never a disappointed 
 slumped posture. An expedition has hard days without the climber having failed; a sad mascot
 would make the instrument an authority figure and productivity performative.
 
+- **M0 ships with no motion at all** (#9): the panel is static text. The loading state is a
+  plain line, not a spinner; the read-only Status Map opens on click without animating; the
+  scenario picker is a menu. Every bullet below describes the mascot's M3 future, not the
+  M0 panel.
 - Animation fires **only on a change of Confidence State**. Nothing idle-loops — a looping
   animation in peripheral vision is a permanent low-grade demand for attention.
 - Under `accessibilityDisplayShouldReduceMotion`, transitions become cross-fades.

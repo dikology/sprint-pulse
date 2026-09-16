@@ -1,0 +1,47 @@
+/// The fixture corpus, as the Operator browses it (#9). Every scenario the instrument can
+/// reach is one case, and the panel's scenario picker lists exactly these — so a state the
+/// corpus holds but the picker cannot load is a test failure, not an invisible gap.
+///
+/// Case order is the picker's reading order: the Confidence States first, then the Caps, the
+/// Scope figures, and the structural scenarios last. Raw values are the fixture directory
+/// names inside `Fixtures/`; `FixtureCorpusTests` pins this list to the directories on disk
+/// in both directions, so neither side can drift from the other.
+///
+/// Scenario titles are deliberately absent here, the way Flow State display labels are:
+/// domain-facing code carries the vocabulary, the view renders the words.
+public enum FixtureScenario: String, CaseIterable, Identifiable, Sendable {
+    // MARK: Confidence States
+    /// The corpus's front door: first observation of a sprint, nothing Completed yet.
+    case walkingSkeleton = "walking-skeleton"
+    case confidenceColdStart = "confidence-cold-start"
+    case confidenceZeroCompleted = "confidence-zero-completed"
+    case unmappedStatus = "unmapped-status"
+    case confidenceOffTrack = "confidence-off-track"
+    case confidenceDaysExhausted = "confidence-days-exhausted"
+    case confidenceTight = "confidence-tight"
+    case confidenceOnTrack = "confidence-on-track"
+    case confidenceNoSweat = "confidence-no-sweat"
+    case confidenceHandsOff = "confidence-hands-off"
+    case confidenceFinished = "confidence-finished"
+
+    // MARK: Caps
+    case capUnestimated = "cap-unestimated"
+    case capWaitingHeavy = "cap-waiting-heavy"
+    case capBoth = "cap-both"
+    case capAtBottom = "cap-at-bottom"
+    case capHandsOff = "cap-hands-off"
+    case capUnknown = "cap-unknown"
+
+    // MARK: Scope
+    case scopeGrowth = "scope-growth"
+    case scopeShrink = "scope-shrink"
+    case baselineColdStart = "baseline-cold-start"
+    case allDropped = "all-dropped"
+
+    // MARK: Structure
+    case allFlowStates = "all-flow-states"
+    case unestimatedAcrossStates = "unestimated-across-states"
+    case subtasksWithEstimates = "subtasks-with-estimates"
+
+    public var id: String { rawValue }
+}

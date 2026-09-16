@@ -23,16 +23,21 @@ swift test          # the domain
 swift run SprintPulse   # the menu-bar app, on fixtures
 ```
 
-The menu-bar app currently runs entirely on fixtures — no Jira, no network, no credential.
+The menu-bar app currently runs entirely on fixtures — no Jira, no network, no credential,
+and no authentication wall: a scenario picker at the top of the panel loads any fixture in the
+corpus, so every state the instrument can reach is reachable by clicking, at the moment each
+scenario pins for itself.
 It shows Points per Flow State for the Active Sprint's My Work: Actionable and Waiting as
 separate totals, Completed and Dropped as their own figures, a count of Unestimated Issues,
 and any Unmapped Status named prominently. Above them sit Working Days Remaining and Elapsed,
 the Required Rate, the Demonstrated Rate, and the Confidence State with the one-line explanation
 of it — the rule that matched, plus any Cap that demoted the reading, spelled out from the
-numbers underneath. Below them, the sprint's shape: live Points, the Points recorded the first
+numbers underneath. Below them, the sprint's shape: the Team Scope total — every Issue in the
+sprint, dim and secondary, with no forecast ever attached to it — the Points recorded the first
 time the sprint was observed, and the Scope Delta between them — added scope and removed work
 read as different words, not just different signs. The Status Map is shown read-only ([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md));
-its editor is M1.
+its editor is M1. Nothing on the panel animates or loops, and nothing conveys meaning by image
+or colour alone: every figure is spelled out for a screen reader.
 
 ## Status
 
@@ -49,8 +54,13 @@ now carries a `ConfidenceReading` — the rule that matched plus the Caps that f
 panel renders its one line from that rather than from a guess. Sprint Baseline and Scope Delta
 ([#8](https://github.com/dikology/sprint-pulse/issues/8)) closed the attribution gap: the
 Baseline enters and leaves the forecast as a value, and the panel shows whether a moved reading
-is the Operator falling behind or the sprint changing shape. The scenario picker
-([#9](https://github.com/dikology/sprint-pulse/issues/9)) is what is left of M0.
+is the Operator falling behind or the sprint changing shape. Explorable and legible
+([#9](https://github.com/dikology/sprint-pulse/issues/9)) closed M0: the scenario picker's list
+is pinned to the corpus by a test, the corpus is audited against the scenario list in
+[#1](https://github.com/dikology/sprint-pulse/issues/1), and the panel carries the accessibility
+and no-motion properties above. What remains of the milestone is the one test that cannot be
+automated: transcribe a real, remembered sprint into a fixture and check whether the reported
+Confidence State matches what that sprint actually felt like.
 
 ## Licence
 

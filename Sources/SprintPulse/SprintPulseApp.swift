@@ -14,6 +14,7 @@ struct SprintPulseApp: App {
             PanelView(panel: panel)
         } label: {
             Text(panel.menuBarLabel)
+                .accessibilityLabel(panel.menuBarAccessibilityLabel)
         }
         .menuBarExtraStyle(.window)
     }

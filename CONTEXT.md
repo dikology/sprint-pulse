@@ -31,8 +31,8 @@ The issues in the Active Sprint assigned to the operator. The forecast is comput
 and nothing else.
 
 **Team Scope**:
-Every issue in the Active Sprint, regardless of assignee. Displayed as unforecasted context;
-no confidence is ever computed over it.
+Every issue in the Active Sprint, regardless of assignee. Displayed as a dim secondary Points
+total — context, never a reading; no Confidence, forecast, or rate is ever computed over it.
 
 ### Work items and estimation
 
@@ -156,7 +156,8 @@ observes the sprint as active. It exists to explain change, never to be forecast
 **Live Sprint Points**:
 Points over every task-level Issue in the Active Sprint, regardless of assignee — the shape
 the sprint has now, which the Sprint Baseline once recorded as Baseline Points. Shown on the
-panel only as the two operands of the Scope Delta; no forecast figure is computed from either.
+panel as the Team Scope total, which doubles as the Scope Delta's live operand; no forecast
+figure is computed from either. One number is shown once, under one name.
 
 **Scope Delta**:
 The difference between the Active Sprint's live Points and its Sprint Baseline. Displayed so

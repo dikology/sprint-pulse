@@ -33,27 +33,8 @@ final class FixtureJiraGatewayTests: XCTestCase {
         XCTAssertNil(byKey["MOB-1207"]?.fields.assignee)
     }
 
-    /// The fixture corpus: every bundle decodes through the gateway in Jira Data Center shape.
-    func test_bundled_everyFixtureCorpusDirectoryDecodes() async throws {
-        for name in [
-            "walking-skeleton",
-            "all-flow-states",
-            "unmapped-status",
-            "unestimated-across-states",
-            "subtasks-with-estimates",
-            "scope-growth",
-            "scope-shrink",
-            "baseline-cold-start",
-            "all-dropped",
-        ] {
-            let gateway = try FixtureJiraGateway.bundled(named: name)
-            let sprints = try await gateway.activeSprints()
-            let sprint = try XCTUnwrap(sprints.values.first, "\(name): an active sprint")
-            let issues = try await gateway.issues(inSprint: sprint.id)
-            XCTAssertEqual(issues.issues.count, issues.total, "\(name): issue count matches total")
-            XCTAssertFalse(issues.issues.isEmpty, "\(name): has issues")
-        }
-    }
+    // The corpus-wide decode check moved to FixtureCorpusTests, which enumerates the bundle
+    // instead of a hand list that had gone stale (nine of twenty-four fixtures, #9 audit).
 
     func test_init_readsFromAnArbitraryDirectory() async throws {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
