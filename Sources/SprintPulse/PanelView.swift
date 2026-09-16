@@ -61,9 +61,12 @@ struct PanelView: View {
                 }
             }
             .pickerStyle(.menu)
-            // The no-credential promise, stated where the Operator looks first: fixture mode
-            // is the default and first launch presents no authentication wall (#9).
-            Text("Fixture mode — no credential is configured, and none is needed.")
+            // What the panel itself knows: the reading in front of the Operator came from the
+            // bundled corpus, not a live sprint. (The #9 criterion behind it — the app is fully
+            // usable with no credential configured, and first launch presents no
+            // authentication wall — holds by absence elsewhere: there is no credential code
+            // to configure yet.)
+            Text("Fixture mode — the panel is reading a bundled scenario, not a live sprint.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -254,7 +257,7 @@ struct PanelView: View {
     /// `—` is a hedge a screen reader reads as punctuation, and "3.25/day" is a fraction, not
     /// the rate it names — the same figures, said as sentences (#9).
     private func rateRow(_ label: String, _ value: Double?) -> some View {
-        let spoken = value.map { String(format: "%.2f", $0) + " Points per day" } ?? "no reading yet"
+        let spoken = value.map { rateText($0) + " Points per day" } ?? "no reading yet"
         return HStack {
             Text(label).foregroundStyle(.secondary)
             Spacer()
@@ -404,6 +407,13 @@ struct PanelView: View {
     /// back into the wrong band.
     private func rate(_ rate: Double?) -> String {
         guard let rate else { return "—" }
-        return String(format: "%.2f/day", rate)
+        return "\(rateText(rate))/day"
+    }
+
+    /// The two-decimal rule behind both the displayed rate and its spoken form — one place,
+    /// because the reader reproducing the band boundaries against either must get the same
+    /// figure (invariant 10).
+    private func rateText(_ rate: Double) -> String {
+        String(format: "%.2f", rate)
     }
 }

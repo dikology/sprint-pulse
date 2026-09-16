@@ -110,7 +110,7 @@ final class FixtureCorpusTests: XCTestCase {
             XCTAssertFalse(issues.issues.isEmpty, "\(row.scenario.rawValue): has issues")
 
             let moment = try XCTUnwrap(
-                FixtureJiraGateway.pinnedNow(named: row.scenario.rawValue),
+                FixtureJiraGateway.pinnedNow(row.scenario),
                 "\(row.scenario.rawValue): no pinned moment"
             )
             let instrument = Forecast.evaluate(
@@ -118,7 +118,7 @@ final class FixtureCorpusTests: XCTestCase {
                 identity: operatorIdentity,
                 statusMap: .default,
                 workingCalendar: workingCalendar,
-                baseline: try FixtureJiraGateway.bundledBaseline(named: row.scenario.rawValue),
+                baseline: try FixtureJiraGateway.bundledBaseline(row.scenario),
                 now: moment
             ).instrument
             XCTAssertEqual(instrument.sprintName, sprint.name, "\(row.scenario.rawValue)")

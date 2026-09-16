@@ -31,6 +31,13 @@ public struct FixtureJiraGateway: JiraGateway {
         FixtureJiraGateway(directory: try bundledDirectory(named: name))
     }
 
+    /// Typed shorthands for the bundled corpus, so the picker's scenario travels as itself
+    /// rather than being unwrapped to a directory name at every read. The `named:` forms stay
+    /// for whoever holds a string — the corpus audit, which walks the directories by name.
+    public static func bundled(_ scenario: FixtureScenario) throws -> FixtureJiraGateway {
+        try bundled(named: scenario.rawValue)
+    }
+
     /// The bundled directory for a fixture set, so the scenario's own files — the day-one
     /// `baseline.json` of a Scope Delta scenario, its pinned `now.json` — can be read beside
     /// the Jira envelopes. The gateway protocol covers Jira's responses only; neither file
@@ -56,6 +63,10 @@ public struct FixtureJiraGateway: JiraGateway {
         return try decoder.decode(SprintBaseline.self, from: data)
     }
 
+    public static func bundledBaseline(_ scenario: FixtureScenario) throws -> SprintBaseline? {
+        try bundledBaseline(named: scenario.rawValue)
+    }
+
     /// The moment a scenario claims to be observed at — the `now.json` of its directory, an
     /// ISO-8601 string in the app's own format, never part of a Jira envelope. A fixture read
     /// on a later day is not the same observation: its Working Days move, its rates move, and
@@ -70,6 +81,10 @@ public struct FixtureJiraGateway: JiraGateway {
             throw FixtureError.fileMalformed(url.path)
         }
         return date
+    }
+
+    public static func pinnedNow(_ scenario: FixtureScenario) throws -> Date? {
+        try pinnedNow(named: scenario.rawValue)
     }
 
     /// Every scenario directory in the bundled corpus. The picker and the corpus audit read

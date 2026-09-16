@@ -32,18 +32,9 @@ final class ForecastTests: XCTestCase {
         return SprintSnapshot(sprint: sprint, issues: issues.issues)
     }
 
-    /// The stored-Baseline half of a Scope Delta scenario, bundled beside the Jira-shaped
-    /// responses. Deliberately not a gateway concern: the Baseline is Sprint Pulse's own
-    /// persisted value, not something Jira returns. `nil` for fixtures without one — those
-    /// are first-observation scenarios. Read through the core helper the app's scenario
-    /// loading uses, so tests and panel see the same day-one snapshot.
-    private func bundledBaseline(_ fixture: String) throws -> SprintBaseline? {
-        try FixtureJiraGateway.bundledBaseline(named: fixture)
-    }
-
     private func evaluate(_ fixture: String, baseline: SprintBaseline? = nil) async throws -> (instrument: Instrument, baseline: SprintBaseline) {
         XCTAssertEqual(now, try pinnedNow(fixture), "\(fixture): the shared moment and the scenario's own pin disagree")
-        let stored = try bundledBaseline(fixture)
+        let stored = try FixtureJiraGateway.bundledBaseline(named: fixture)
         return Forecast.evaluate(
             snapshot: try await snapshot(fixture),
             identity: operatorIdentity,
@@ -67,7 +58,7 @@ final class ForecastTests: XCTestCase {
             identity: operatorIdentity,
             statusMap: .default,
             workingCalendar: workingCalendar,
-            baseline: try bundledBaseline(fixture),
+            baseline: try FixtureJiraGateway.bundledBaseline(named: fixture),
             now: now
         ).instrument
     }
@@ -280,7 +271,7 @@ final class ForecastTests: XCTestCase {
         // here reads the Baseline.
         XCTAssertEqual(i.requiredRate, 4.5)
         // The fixed Baseline leaves core as the value that entered it.
-        XCTAssertEqual(result.baseline, try bundledBaseline("scope-growth"))
+        XCTAssertEqual(result.baseline, try FixtureJiraGateway.bundledBaseline(named: "scope-growth"))
     }
 
     /// Scope counts the sprint's shape, not the flow within it: Unmapped Status Issues are

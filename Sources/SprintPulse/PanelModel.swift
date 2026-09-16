@@ -53,7 +53,7 @@ final class PanelModel: ObservableObject {
 
     func load() async {
         do {
-            let gateway = try FixtureJiraGateway.bundled(named: scenario.rawValue)
+            let gateway = try FixtureJiraGateway.bundled(scenario)
             let sprint = try SprintSnapshot.selectActiveSprint(from: try await gateway.activeSprints())
             let issues = try await gateway.issues(inSprint: sprint.id)
             let snapshot = SprintSnapshot(sprint: sprint, issues: issues.issues)
@@ -64,7 +64,7 @@ final class PanelModel: ObservableObject {
             // Rates hollowing out to no reading, bands drifting away from the states the
             // picker's names promise. The wall clock is only the fallback for a directory
             // without a pin; `FixtureCorpusTests` requires every bundled scenario to carry one.
-            let moment = try FixtureJiraGateway.pinnedNow(named: scenario.rawValue) ?? Date()
+            let moment = try FixtureJiraGateway.pinnedNow(scenario) ?? Date()
 
             // A scenario that bundles its day-one `baseline.json` (the Scope Delta fixtures,
             // #8) *is* its stored Baseline: otherwise the picker could load scope-growth and
@@ -73,7 +73,7 @@ final class PanelModel: ObservableObject {
             // scenario falls back to the app's own persisted Baseline, exactly as live mode
             // will; a stale one from another sprint re-captures on mismatch, which is
             // `Forecast`'s existing rule.
-            let stored = try FixtureJiraGateway.bundledBaseline(named: scenario.rawValue)
+            let stored = try FixtureJiraGateway.bundledBaseline(scenario)
                 ?? baselineStore.load()
 
             let result = Forecast.evaluate(
