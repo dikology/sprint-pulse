@@ -15,6 +15,7 @@ for what it is and why, and [`docs/adr/`](./docs/adr/) for the decisions.
 | `Sources/SprintPulseCore/Fixtures/` | The fixture corpus: JSON in the exact shape of Jira Data Center responses, one directory per sprint scenario. |
 | `Sources/SprintPulse/` | The macOS menu-bar app. A thin view layer holding platform and persistence concerns. |
 | `Tests/SprintPulseCoreTests/` | Domain tests, run against fixtures with a pinned date. |
+| `Tests/SprintPulseAppTests/` | The app's own seams: the single Keychain item, the preferences store, and the setup flow that persists through them. Still no network — the identity probe is injected, as the transport is on the core side. |
 
 ## Build and test
 
@@ -23,10 +24,16 @@ swift test          # the domain
 swift run SprintPulse   # the menu-bar app, on fixtures
 ```
 
-The menu-bar app currently runs entirely on fixtures — no Jira, no network, no credential,
-and no authentication wall: a scenario picker at the top of the panel loads any fixture in the
+The panel's reading still runs entirely on fixtures, and first launch presents no
+authentication wall: a scenario picker at the top of the panel loads any fixture in the
 corpus, so every state the instrument can reach is reachable by clicking, at the moment each
-scenario pins for itself.
+scenario pins for itself. What the credential half of M1 adds beside it
+([#10](https://github.com/dikology/sprint-pulse/issues/10)) is a Jira connection section:
+it stores a Personal Access Token as a single macOS Keychain item and resolves the Operator's
+identity from `/rest/api/2/myself` — but it fetches no sprint yet, so fixtures stay the
+default reading whatever the connection state is, and live reads follow with the Board
+configuration (#11).
+
 It shows Points per Flow State for the Active Sprint's My Work: Actionable and Waiting as
 separate totals, Completed and Dropped as their own figures, a count of Unestimated Issues,
 and any Unmapped Status named prominently. Above them sit Working Days Remaining and Elapsed,
@@ -61,6 +68,19 @@ is pinned to the corpus by a test, the corpus is audited against the scenario li
 and no-motion properties above. What remains of the milestone is the one test that cannot be
 automated: transcribe a real, remembered sprint into a fixture and check whether the reported
 Confidence State matches what that sprint actually felt like.
+
+Milestone **M1** — live reads — opens with Credential and identity
+([#10](https://github.com/dikology/sprint-pulse/issues/10)). The Operator configures a Jira
+Data Center base URL and authenticates with a Personal Access Token — Bearer only, no Basic,
+no OAuth, no Cloud. The token's only resting place is a single macOS Keychain item: never
+preferences, never a cache, never a log, and no error message quotes it. Identity resolves
+once at setup from `/rest/api/2/myself` — both `key` and `name`, so a username change cannot
+empty the forecast — and the app confirms who it thinks the Operator is before anything is
+stored; a failed setup stores nothing, because the app refuses a live request rather than
+falling back to any other credential source. The failure states are distinguished, not
+collapsed: unreachable host, TLS rejection, rejected token, 404 on the configured path, and
+a malformed response each say which one they were. The credential can be removed from the
+panel, which returns the app to its fixture default.
 
 ## Licence
 

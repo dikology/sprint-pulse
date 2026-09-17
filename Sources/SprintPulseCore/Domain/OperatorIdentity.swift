@@ -6,7 +6,7 @@ import Foundation
 /// renames). Assignee matching is on `key`, falling back to `name`, so a username change does
 /// not empty the forecast. In M1 this is resolved once from `/rest/api/2/myself`; the walking
 /// skeleton passes it in directly.
-public struct OperatorIdentity: Equatable, Sendable {
+public struct OperatorIdentity: Codable, Equatable, Sendable {
     public let key: String
     public let name: String
 

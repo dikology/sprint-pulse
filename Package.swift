@@ -25,5 +25,12 @@ let package = Package(
             name: "SprintPulseCoreTests",
             dependencies: ["SprintPulseCore"]
         ),
+        // The app's platform concerns are testable at their own seam: the Keychain item, the
+        // settings store, and the setup flow that persists through them. Still no network —
+        // the identity probe is injected exactly as the transport is on the core side (#10).
+        .testTarget(
+            name: "SprintPulseAppTests",
+            dependencies: ["SprintPulse"]
+        ),
     ]
 )

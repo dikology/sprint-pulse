@@ -138,4 +138,52 @@ final class FixtureCorpusTests: XCTestCase {
             "a first-observation scenario has witnessed no movement"
         )
     }
+
+    /// The corpus is anonymised, and this repository is public. A raw capture dropped in as
+    /// a *new* directory already fails the audit above — but a real instance host or a real
+    /// mailbox smuggled into the text of an existing fixture would not, so every URL host
+    /// and every mail address in every fixture file must belong to the `example` families
+    /// reserved for documentation. This is the `.gitignore` comment ("fixtures stay
+    /// anonymised") turned into a failing test rather than an aspiration.
+    func test_corpus_isAnonymised_onlyExampleDomainsAppear() throws {
+        let fixtures = try XCTUnwrap(
+            Bundle.module.url(forResource: "Fixtures", withExtension: nil)
+        )
+        var offenders: [String] = []
+        for name in try FixtureJiraGateway.corpusScenarioNames().sorted() {
+            let directory = fixtures.appendingPathComponent(name)
+            let files = try FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: nil
+            )
+            for file in files where file.pathExtension == "json" {
+                let text = try String(contentsOf: file, encoding: .utf8)
+                for host in Self.domains(in: text) where !Self.isExampleDomain(host) {
+                    offenders.append("\(name)/\(file.lastPathComponent): \(host)")
+                }
+            }
+        }
+        XCTAssertTrue(
+            offenders.isEmpty,
+            "fixture corpus names non-example domains — anonymise before committing:\n"
+                + offenders.joined(separator: "\n")
+        )
+    }
+
+    /// Hosts of `http(s)://` URLs and domains of mail addresses anywhere in a JSON text.
+    private static func domains(in text: String) -> [String] {
+        let pattern = #"(?i)(?:https?://|@)([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard let captured = Range(match.range(at: 1), in: text) else { return nil }
+            return String(text[captured])
+        }
+    }
+
+    private static func isExampleDomain(_ host: String) -> Bool {
+        let lowered = host.lowercased()
+        let allowed: [String] = [".example.com", ".example.org", ".example.net", ".test"]
+        let roots: [String] = ["example.com", "example.org", "example.net"]
+        return roots.contains(lowered) || allowed.contains { lowered.hasSuffix($0) }
+    }
 }

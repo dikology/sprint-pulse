@@ -13,6 +13,7 @@ import SprintPulseCore
 /// VoiceOver.
 struct PanelView: View {
     @ObservedObject var panel: PanelModel
+    @ObservedObject var setup: JiraSetupModel
     @State private var statusMapExpanded = true
 
     var body: some View {
@@ -39,6 +40,10 @@ struct PanelView: View {
 
             Divider()
 
+            jiraConnection
+
+            Divider()
+
             Button("Quit Sprint Pulse") {
                 NSApplication.shared.terminate(nil)
             }
@@ -62,14 +67,107 @@ struct PanelView: View {
             }
             .pickerStyle(.menu)
             // What the panel itself knows: the reading in front of the Operator came from the
-            // bundled corpus, not a live sprint. (The #9 criterion behind it — the app is fully
-            // usable with no credential configured, and first launch presents no
-            // authentication wall — holds by absence elsewhere: there is no credential code
-            // to configure yet.)
+            // bundled corpus, not a live sprint. Fixtures remain the default whenever no
+            // credential exists (#10) — and in M1 the panel keeps reading them even once one
+            // does, until the live sprint reads land behind the same gateway (#11).
             Text("Fixture mode — the panel is reading a bundled scenario, not a live sprint.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The credential setup (#10): a Jira Data Center base URL and a Personal Access Token,
+    /// resolved against `/rest/api/2/myself` and confirmed back to the Operator before
+    /// anything is stored. The rules are the panel's existing ones — no motion (a probe in
+    /// flight is a plain line, not a spinner), no meaning carried by colour alone, and every
+    /// failure named by its own distinct state rather than "could not connect".
+    ///
+    /// The token field is a `SecureField` and the draft is cleared the moment the attempt
+    /// ends; the only place the token outlives the attempt is the single Keychain item, on a
+    /// resolved identity and never otherwise. Removal is offered on `hasStoredCredential`,
+    /// not on the flow's state: a token in the Keychain is never left with no way to revoke
+    /// it from the panel.
+    @ViewBuilder
+    private var jiraConnection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Jira connection")
+                .font(.subheadline.bold())
+                .accessibilityAddTraits(.isHeader)
+
+            switch setup.state {
+            case .resolved(let identity):
+                // The confirmation the Operator asked for: who the app thinks they are, in
+                // both identifiers it matched on. Never a paraphrase, never a guess.
+                Text("Identity confirmed: \(identity.name) — key \(identity.key).")
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("The panel still reads bundled fixtures; live reads follow the Board configuration.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Remove credential") {
+                    setup.removeCredential()
+                }
+
+            case .notConfigured:
+                connectionForm(connecting: false, failure: nil)
+
+            case .connecting:
+                connectionForm(connecting: true, failure: nil)
+
+            case .failed(let message):
+                connectionForm(connecting: false, failure: message)
+            }
+        }
+        // `.contain`, not the value rows' `.combine`: a form is a set of live controls the
+        // reader must reach individually — the combine that suits "label: figure" rows would
+        // swallow the fields.
+        .accessibilityElement(children: .contain)
+    }
+
+    /// The setup form, shared by every state that is not a confirmed identity. The removal
+    /// control joins it whenever a credential is actually stored — an earlier setup's token
+    /// must stay revocable even when the flow itself is mid-attempt or showing a failure.
+    @ViewBuilder
+    private func connectionForm(connecting: Bool, failure: String?) -> some View {
+        TextField(
+            "Jira base URL — https://jira.example.com",
+            text: $setup.baseURLText
+        )
+        .textFieldStyle(.roundedBorder)
+        .accessibilityLabel("Jira base URL")
+
+        SecureField("Personal Access Token", text: $setup.tokenText)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("Personal Access Token")
+            .disabled(connecting)
+
+        Button("Verify credential") {
+            Task { await setup.connect() }
+        }
+        .disabled(connecting)
+
+        if connecting {
+            // A line, not a spinner. It lasts one `/myself` request over a VPN that may be
+            // down — which is exactly the case the failure message below distinguishes.
+            Text("Asking Jira who this credential belongs to…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        if let failure {
+            Text(failure)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+
+        if setup.hasStoredCredential {
+            Button("Remove credential") {
+                setup.removeCredential()
+            }
         }
     }
 

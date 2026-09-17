@@ -44,3 +44,12 @@ series can now make: an agent pipeline can close a milestone whose final accepta
 explicitly *not* automatable, because the issue-as-spec + `CONTEXT.md` + glossary substrate
 carried enough judgement for everything before it.
 Refs: #9; `Sources/SprintPulseCore/Jira/FixtureScenarios.swift`; `Tests/SprintPulseCoreTests/FixtureCorpusTests.swift`
+
+### 2026-09-17 — M1 opens: the milestone boundary crossed without touching the model
+Issue #10 shipped credential + identity — Keychain PAT, `/myself` resolution behind an injected
+transport, distinct failure states — and the forecast model did not change by one line, exactly
+as #2's decision demanded. The cross-repo claim the series can now make: an agent pipeline that
+agrees its seams up front (gateway protocol, transport seam, probe seam in the app) can cross the
+offline→online milestone boundary as ordinary ticket work; the seam discipline written in the
+walking-skeleton ticket held under a security-critical extension of the same repo.
+Refs: #10; `Sources/SprintPulseCore/Jira/JiraTransport.swift`; `Tests/SprintPulseAppTests/`

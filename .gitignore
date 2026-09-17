@@ -4,3 +4,17 @@
 DerivedData/
 .DS_Store
 .qwen/
+
+# Credentials and company specifics. This repository is public: nothing below may
+# ever be committed — real tokens, real instance config, and raw captures from a
+# live Jira belong on the local machine only (fixtures stay anonymised).
+.env
+.env.*
+!.env.example
+.netrc
+credentials.json
+*.pem
+*.key
+*.p12
+captures/
+*.har

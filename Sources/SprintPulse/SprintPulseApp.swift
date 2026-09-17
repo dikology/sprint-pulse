@@ -8,10 +8,11 @@ import SwiftUI
 struct SprintPulseApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var panel = PanelModel()
+    @StateObject private var setup = JiraSetupModel()
 
     var body: some Scene {
         MenuBarExtra {
-            PanelView(panel: panel)
+            PanelView(panel: panel, setup: setup)
         } label: {
             Text(panel.menuBarLabel)
                 .accessibilityLabel(panel.menuBarAccessibilityLabel)
