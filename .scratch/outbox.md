@@ -53,3 +53,18 @@ agrees its seams up front (gateway protocol, transport seam, probe seam in the a
 offline→online milestone boundary as ordinary ticket work; the seam discipline written in the
 walking-skeleton ticket held under a security-critical extension of the same repo.
 Refs: #10; `Sources/SprintPulseCore/Jira/JiraTransport.swift`; `Tests/SprintPulseAppTests/`
+
+### 2026-09-21 — The live read landed on the fixture protocol, unchanged
+Issue #11 put a real Jira Data Center Board behind the same `JiraGateway` the fixture corpus had
+satisfied since #3: two Agile listings, paged to their own `total`, decoded by the same decoder
+that reads the corpus — and a test that serves the corpus's own bytes through the live client and
+demands an identical `Instrument`. The rule table, its evaluation order, and the Caps are
+untouched, and so is the model's output shape: the one thing the panel needed to know that
+`Instrument` did not say — whether My Work has any subject at all — is asked of
+`SprintSnapshot.myWork(assignedTo:)`, the same definition the forecast sums over, rather than
+being added as a field. The cross-repo claim: a spec that pre-commits to "if the live integration
+needs a model change, the seam was drawn wrong" is checkable in review, and the check is a
+byte-for-byte equality between the fixture path and the network path plus a M0 whole-value
+assertion that survives untouched — not a reviewer's assurance.
+Refs: #11; `Sources/SprintPulseCore/Jira/LiveJiraGateway.swift`;
+`Tests/SprintPulseCoreTests/LiveJiraGatewayTests.swift`

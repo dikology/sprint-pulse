@@ -552,8 +552,92 @@ final class ForecastTests: XCTestCase {
         XCTAssertEqual(i.reading.caps, [.waitingHeavy])
         XCTAssertEqual(i.confidenceState, .offTrack)
     }
-}
 
+    // MARK: - Live reads (#11): what a real Board reports that no M0 fixture did
+
+    /// Two sprints in the `active` state on one Board is an ordinary configuration, not a
+    /// conflict to resolve: the Operator names which is being tracked and the reading below is
+    /// that sprint's. Resolved through `resolveTrackedSprint` — the same call the panel makes —
+    /// because the milestone's rule is that the app never infers it from names, dates, or
+    /// whichever sprint the envelope happened to list first.
+    func test_evaluate_twoActiveSprints_forecastsTheSprintTheOperatorNamed() async throws {
+        let gateway = try FixtureJiraGateway.bundled(.twoActiveSprints)
+        let choice = SprintSnapshot.resolveTrackedSprint(
+            in: try await gateway.activeSprints(), chosenSprintID: 5311
+        )
+        let sprint = try XCTUnwrap(choice.sprint)
+        let issues = try await gateway.issues(inSprint: sprint.id)
+        let snapshot = SprintSnapshot(sprint: sprint, issues: issues.issues)
+
+        let i = Forecast.evaluate(
+            snapshot: snapshot,
+            identity: operatorIdentity, statusMap: .default, workingCalendar: workingCalendar,
+            baseline: nil, now: isoDate("2026-09-21T12:00:00Z")
+        ).instrument
+
+        XCTAssertEqual(i.sprintName, "Mobile Platform Sprint 34", "the named sprint, never the other active one")
+        // The population the sums below were taken over: five of the eight Issues. TAS-2108 is the
+        // Operator's too and is a sub-task, so it is not My Work and its 8 Points appear nowhere.
+        XCTAssertEqual(snapshot.myWork(assignedTo: operatorIdentity).map(\.key),
+                       ["TAS-2101", "TAS-2102", "TAS-2103", "TAS-2104", "TAS-2105"])
+        XCTAssertEqual(i.actionablePoints, 5)     // TAS-2102 (3) + TAS-2104 (2)
+        XCTAssertEqual(i.waitingPoints, 5)        // TAS-2105, In Review
+        XCTAssertEqual(i.completedPoints, 12)     // TAS-2101 (8) + TAS-2103 (4)
+        XCTAssertEqual(i.workingDaysElapsed, 6)   // Mon 14 through Mon 21, inclusive
+        XCTAssertEqual(i.workingDaysRemaining, 5) // Mon 21 through Fri 25 — the *named* sprint's end
+        XCTAssertEqual(i.requiredRate, 1.0)
+        XCTAssertEqual(i.demonstratedRate, 2.0)
+        XCTAssertEqual(i.reading, ConfidenceReading(rule: .ratioNoSweat, caps: [.waitingHeavy]))
+        XCTAssertEqual(i.confidenceState, .onTrack, "half the remaining Points are in someone else's hands")
+        XCTAssertEqual(i.liveSprintPoints, 35, "the sprint's task-level Points; TAS-2108's 8 are a sub-task")
+    }
+
+    /// A sprint shared with two other people and one empty assignee: the forecast is unchanged in
+    /// kind — My Work only — while the sprint's shape is everyone's. The other assignees' 21
+    /// Points and the Operator's own 8-Point sub-task appear nowhere in the reading, and a second
+    /// Estimate field on the same instance (`customfield_10007`) is not the configured one.
+    func test_evaluate_severalAssignees_forecastsMyWorkAndTotalsTheRestAsTeamScope() async throws {
+        let snapshot = try await snapshot("several-assignees")
+        let i = Forecast.evaluate(
+            snapshot: snapshot, identity: operatorIdentity, statusMap: .default,
+            workingCalendar: workingCalendar, baseline: nil, now: isoDate("2026-09-21T12:00:00Z")
+        ).instrument
+
+        XCTAssertEqual(snapshot.myWork(assignedTo: operatorIdentity).map(\.key),
+                       ["SEA-2201", "SEA-2202", "SEA-2203", "SEA-2208"])
+        XCTAssertEqual(i.actionablePoints, 5)     // 3 In Progress + 2 Open
+        XCTAssertEqual(i.waitingPoints, 0)
+        XCTAssertEqual(i.completedPoints, 12)
+        XCTAssertEqual(i.droppedPoints, 5, "Cancelled in place: out of the remaining total, never into Completed")
+        XCTAssertEqual(i.pointsRemaining, 5)
+        XCTAssertEqual(i.unestimatedCount, 0)
+        XCTAssertEqual(i.reading, ConfidenceReading(rule: .ratioNoSweat, caps: []), "D 12÷6 against R 5÷5")
+        XCTAssertEqual(i.confidenceState, .noSweat)
+        // Team Scope counts every task-level Issue whoever owns it — 43 against the 22 the
+        // forecast sees, and the difference is context rather than a subject (#11).
+        XCTAssertEqual(i.liveSprintPoints, 43)
+        XCTAssertEqual(i.scopeDelta, 0, "first observation")
+    }
+
+    /// A resolved identity that matches nothing in the Active Sprint. The arithmetic is real —
+    /// zero over five Working Days — and it is about nothing, which is why the panel shows its
+    /// own state for an empty My Work instead of this Confidence State (#11). NWA-2305 is the
+    /// Operator's and is a sub-task, so even that match leaves the subject empty.
+    func test_evaluate_identityMatchingNoIssues_isItsOwnStateNotAConfidentZero() async throws {
+        let snapshot = try await snapshot("no-work-assigned")
+        let i = Forecast.evaluate(
+            snapshot: snapshot, identity: operatorIdentity, statusMap: .default,
+            workingCalendar: workingCalendar, baseline: nil, now: isoDate("2026-09-21T12:00:00Z")
+        ).instrument
+
+        XCTAssertEqual(snapshot.myWork(assignedTo: operatorIdentity), [], "the empty subject, from the same definition the forecast summed over")
+        XCTAssertEqual(i.actionablePoints, 0)
+        XCTAssertEqual(i.waitingPoints, 0)
+        XCTAssertEqual(i.unestimatedCount, 0, "nothing of the Operator's is unsized either — the set is empty")
+        XCTAssertEqual(i.liveSprintPoints, 21, "the sprint is full; only the Operator's share of it is empty")
+        XCTAssertEqual(i.confidenceState, .finished, "what rule 2 computes over an empty set")
+    }
+}
 /// A calendar date from an ISO-8601 string, for pinning "today" and baseline timestamps.
 func isoDate(_ iso: String) -> Date {
     ISO8601DateFormatter().date(from: iso)!

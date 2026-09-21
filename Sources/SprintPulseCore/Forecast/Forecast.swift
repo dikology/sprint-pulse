@@ -13,6 +13,11 @@ import Foundation
 /// and the `ConfidenceReading` that explains the result; each extended this function's outputs
 /// without replacing its predecessors. #8 adds the Scope Delta pair — the Baseline enters as a
 /// value and leaves as an updated one, and no forecast number is read from it (invariant 9).
+/// #11 changes none of this: reading a live sprint needed no different forecast, which is what
+/// #2 asked for and what `LiveJiraGatewayTests` checks by comparing the two gateway paths byte
+/// for byte. My Work itself moved out to `SprintSnapshot.myWork(assignedTo:)` in that ticket —
+/// not because the forecast changed, but because the app has to ask the same question the
+/// forecast asks in order to know whether there is anything to forecast.
 public enum Forecast {
     public static func evaluate(
         snapshot: SprintSnapshot,
@@ -27,8 +32,10 @@ public enum Forecast {
         // ignored entirely rather than rolled up (CONTEXT invariant 8).
         let issues = snapshot.issues.filter { !$0.fields.issueType.subtask }
 
-        // My Work: the Issues assigned to the Operator. Team Scope never enters the forecast.
-        let myWork = issues.filter { identity.matches($0.fields.assignee) }
+        // My Work: the Issues assigned to the Operator — `SprintSnapshot`'s definition, the same
+        // one the app counts to know whether there is anything to forecast at all (#11). Team
+        // Scope never enters here.
+        let myWork = snapshot.myWork(assignedTo: identity)
 
         // Partition My Work by Flow State. A status with no Status Map entry is an Unmapped
         // Status: its Issues enter no set and the status name is surfaced. Never bucketed by

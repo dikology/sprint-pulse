@@ -55,4 +55,72 @@ final class JiraSettingsStoreTests: XCTestCase {
         defaults.set(Data("junk".utf8), forKey: "jira-identity")
         XCTAssertNil(store.identity)
     }
+
+    // MARK: - The live read's configuration (#11)
+
+    func test_fresh_store_knows_noBoard_noTrackedSprint_noEstimateField() {
+        XCTAssertNil(store.boardID)
+        XCTAssertNil(store.trackedSprintID)
+        XCTAssertNil(store.estimateFieldID)
+    }
+
+    func test_boardID_roundTrips_andSettingItToNil_removesIt() {
+        store.boardID = 172
+        XCTAssertEqual(store.boardID, 172)
+
+        store.boardID = nil
+        XCTAssertNil(store.boardID)
+    }
+
+    func test_trackedSprintID_roundTrips_andSettingItToNil_removesIt() {
+        store.trackedSprintID = 5311
+        XCTAssertEqual(store.trackedSprintID, 5311)
+
+        store.trackedSprintID = nil
+        XCTAssertNil(store.trackedSprintID)
+    }
+
+    /// A remembered sprint choice is an answer about the Board it was given on. The same number
+    /// names a different sprint elsewhere, so it goes with the Board rather than outliving it.
+    func test_changingTheBoard_dropsTheRememberedSprint() {
+        store.boardID = 172
+        store.trackedSprintID = 5311
+
+        store.boardID = 214
+        XCTAssertNil(store.trackedSprintID, "the answer belonged to Board 172")
+
+        store.boardID = 214
+        XCTAssertEqual(store.boardID, 214)
+    }
+
+    func test_rememberingTheSameBoard_keepsTheSprintItWasAnsweredOn() {
+        store.boardID = 172
+        store.trackedSprintID = 5311
+
+        store.boardID = 172
+
+        XCTAssertEqual(store.trackedSprintID, 5311, "re-confirming the same Board is not a new question")
+    }
+
+    func test_estimateFieldID_roundTrips_andNilRestoresTheDefault() {
+        store.estimateFieldID = "customfield_10007"
+        XCTAssertEqual(store.estimateFieldID, "customfield_10007")
+
+        store.estimateFieldID = nil
+        XCTAssertNil(store.estimateFieldID, "absent means the documented default, decided by the reader")
+    }
+
+    func test_clearIdentity_leavesTheBoardTheEstimateField_andTheSprintChoice() {
+        store.boardID = 172
+        store.trackedSprintID = 5311
+        store.estimateFieldID = "customfield_10007"
+        store.identity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
+
+        store.clearIdentity()
+
+        XCTAssertNil(store.identity)
+        XCTAssertEqual(store.boardID, 172, "configuration outlives the credential it was made beside")
+        XCTAssertEqual(store.trackedSprintID, 5311)
+        XCTAssertEqual(store.estimateFieldID, "customfield_10007")
+    }
 }

@@ -23,6 +23,17 @@ final class FixtureCorpusTests: XCTestCase {
     /// also what its picker title (`PanelView.title(for:)`) promises in prose.
     private typealias Row = (scenario: FixtureScenario, test: String, state: ConfidenceState)
 
+    /// The Operator's answer to the prompt, for the one scenario whose Board reports two active
+    /// sprints (#11). Beside the audit rather than a fourth tuple column: two rows of
+    /// twenty-seven need it, and a table with three unset columns in every other row reads as
+    /// though the corpus had questions it does not ask.
+    private let chosenSprintIDs: [FixtureScenario: Int] = [.twoActiveSprints: 5311]
+
+    /// The rows whose My Work is empty on purpose (#11), asserting the size of the population the
+    /// forecast summed over, independently of the state that sum produced. `Instrument` carries no
+    /// such field by design — the panel asks `SprintSnapshot.myWork`, so the audit asks it too.
+    private let emptyMyWork: Set<FixtureScenario> = [.noWorkAssigned]
+
     /// #1's scenario list, one row per bullet.
     private let scenariosFromIssueOne: [Row] = [
         (.confidenceOffTrack, "test_evaluate_ratioBelowSevenFive_isOffTrack", .offTrack),
@@ -59,7 +70,18 @@ final class FixtureCorpusTests: XCTestCase {
         (.capUnknown, "test_evaluate_capsAgainstUnknown_demoteNothing", .unknown),
     ]
 
-    private var allRows: [Row] { scenariosFromIssueOne + scenariosBeyondIssueOne }
+    /// #11's live-read scenarios: what a real Board reports that no M0 fixture did — two active
+    /// sprints at once, a sprint shared with other people, and a sprint holding nothing that
+    /// belongs to the Operator.
+    private let scenariosFromIssueEleven: [Row] = [
+        (.twoActiveSprints, "test_evaluate_twoActiveSprints_forecastsTheSprintTheOperatorNamed", .onTrack),
+        (.severalAssignees, "test_evaluate_severalAssignees_forecastsMyWorkAndTotalsTheRestAsTeamScope", .noSweat),
+        // `Finished` is what the table computes for an empty My Work, and exactly what the panel
+        // must never show: `emptyMyWork` is the population it checks first (#11).
+        (.noWorkAssigned, "test_evaluate_identityMatchingNoIssues_isItsOwnStateNotAConfidentZero", .finished),
+    ]
+
+    private var allRows: [Row] { scenariosFromIssueOne + scenariosBeyondIssueOne + scenariosFromIssueEleven }
 
     func test_audit_theTablesCoverThePickerAndTheCorpusExactly() throws {
         let audited = Set(allRows.map(\.scenario))
@@ -101,10 +123,22 @@ final class FixtureCorpusTests: XCTestCase {
     /// The picker's honesty check: every scenario is loaded the way the panel loads it —
     /// through the gateway in Jira shape, at its own pinned moment, with its bundled
     /// Baseline — and must produce the Confidence State its row promises.
+    ///
+    /// The Active Sprint is resolved through `resolveTrackedSprint`, which is how the panel
+    /// resolves it since #11: the scenario whose Board reports two active sprints is read at the
+    /// sprint its row records the Operator naming. Every other row is unaffected — a Board with
+    /// one active sprint is never a question.
     func test_everyScenario_loadsAtItsPinnedMoment_andProducesItsPromisedState() async throws {
         for row in allRows {
             let gateway = try FixtureJiraGateway.bundled(named: row.scenario.rawValue)
-            let sprint = try SprintSnapshot.selectActiveSprint(from: try await gateway.activeSprints())
+            let choice = SprintSnapshot.resolveTrackedSprint(
+                in: try await gateway.activeSprints(),
+                chosenSprintID: chosenSprintIDs[row.scenario]
+            )
+            let sprint = try XCTUnwrap(
+                choice.sprint,
+                "\(row.scenario.rawValue): the audit names no sprint, so the panel could only prompt"
+            )
             let issues = try await gateway.issues(inSprint: sprint.id)
             XCTAssertEqual(issues.issues.count, issues.total, "\(row.scenario.rawValue): issue count matches total")
             XCTAssertFalse(issues.issues.isEmpty, "\(row.scenario.rawValue): has issues")
@@ -113,8 +147,9 @@ final class FixtureCorpusTests: XCTestCase {
                 FixtureJiraGateway.pinnedNow(row.scenario),
                 "\(row.scenario.rawValue): no pinned moment"
             )
+            let snapshot = SprintSnapshot(sprint: sprint, issues: issues.issues)
             let instrument = Forecast.evaluate(
-                snapshot: SprintSnapshot(sprint: sprint, issues: issues.issues),
+                snapshot: snapshot,
                 identity: operatorIdentity,
                 statusMap: .default,
                 workingCalendar: workingCalendar,
@@ -126,7 +161,33 @@ final class FixtureCorpusTests: XCTestCase {
                 instrument.confidenceState, row.state,
                 "\(row.scenario.rawValue): clicking this picker entry must show the state its name promises"
             )
+            if emptyMyWork.contains(row.scenario) {
+                XCTAssertEqual(
+                    snapshot.myWork(assignedTo: operatorIdentity), [],
+                    "\(row.scenario.rawValue): the reading has no subject, which is the state the panel shows"
+                )
+            }
         }
+    }
+
+    /// The other half of the two-active-sprints scenario: before the Operator answers, there is
+    /// nothing honest to forecast. The prompt is the state, and it names both candidates in the
+    /// Board's own words (#11) — the app never picks the shorter sprint, the earlier one, or the
+    /// first in the envelope.
+    func test_twoActiveSprints_unresolvedIsAPromptNamingBothCandidates() async throws {
+        let gateway = try FixtureJiraGateway.bundled(.twoActiveSprints)
+
+        let choice = SprintSnapshot.resolveTrackedSprint(
+            in: try await gateway.activeSprints(), chosenSprintID: nil
+        )
+
+        guard case .awaitingOperatorChoice(let candidates) = choice else {
+            return XCTFail("a Board reporting two active sprints must ask, got \(choice)")
+        }
+        XCTAssertEqual(
+            candidates.map { "\($0.id) \($0.name)" },
+            ["5311 Mobile Platform Sprint 34", "5312 Growth Experiment Sprint 7"]
+        )
     }
 
     func test_bundledBaseline_readsTheScenarioSnapshotWhenOneIsBundled() throws {

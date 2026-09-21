@@ -7,10 +7,13 @@ import SprintPulseCore
 /// screen (CONTEXT invariant 10): the per-Flow-State rows sum to the Actionable and Waiting
 /// totals.
 ///
-/// Two properties of the whole panel are load-bearing (#9): it ships with no motion — no
-/// spinner, no animating disclosure, nothing that loops and demands peripheral attention —
-/// and nothing conveys meaning by image or colour alone, so every row reads usefully under
-/// VoiceOver.
+/// Two properties of the whole panel are load-bearing (#9): it ships with no motion — no spinner,
+/// no animating disclosure, nothing that loops and demands peripheral attention — and nothing
+/// conveys meaning by image or colour alone, so every row reads usefully under VoiceOver.
+///
+/// Below the header sits one state of `PanelModel.Content` (#11): the reading, an empty My Work,
+/// a sprint that has to be named, a Board with no active sprint, or nothing read yet. A failed
+/// fetch is not one of them — it is a line beside whatever was last read.
 struct PanelView: View {
     @ObservedObject var panel: PanelModel
     @ObservedObject var setup: JiraSetupModel
@@ -18,24 +21,12 @@ struct PanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            scenarioPicker
+            readingSource
 
-            if let instrument = panel.instrument {
-                forecast(instrument)
-            } else if let loadError = panel.loadError {
-                Text("Could not read the fixture")
-                    .font(.headline)
-                Text(String(describing: loadError))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            } else {
-                // Static text, not a spinner: an indeterminate `ProgressView` loops, and M0
-                // ships with no motion at all. This state lasts one fixture read on first
-                // launch, not a watchable interval.
-                Text("Reading the fixture")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            content
+
+            if let readProblem = panel.readProblem {
+                problemLine(readProblem)
             }
 
             Divider()
@@ -51,7 +42,166 @@ struct PanelView: View {
         }
         .padding(12)
         .frame(width: 280)
+        // The window opening is one of the two moments a live read happens (#11); the other is
+        // the Refresh button. Nothing here polls, and while the panel is reading the corpus this
+        // asks for nothing — a fixture is a file, not a request.
+        .onAppear {
+            // One piece of wiring between the two models: remembering the Board or the Estimate
+            // field is the Operator asking for it to be read, which makes the fetch that follows
+            // an explicit request like Refresh (#11). Idempotent, because this runs on every
+            // open.
+            setup.onConfigurationChanged = { Task { await panel.refresh() } }
+            Task { await panel.windowDidAppear() }
+        }
     }
+
+    /// What the panel is reading, and the one control that asks for a fresh live read.
+    @ViewBuilder
+    private var readingSource: some View {
+        if let boardID = panel.liveBoardID {
+            VStack(alignment: .leading, spacing: 4) {
+                // The Board and the identity are named because a live reading is the one thing on
+                // this panel the Operator cannot reproduce from a fixture: they need to see which
+                // Board was asked, and as whom (#11).
+                Text("Live — Board \(boardID), as \(panel.readingIdentity.name)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Refresh") {
+                    Task { await panel.refresh() }
+                }
+                Text("Reads when this window opens and on Refresh. Never on a timer.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            scenarioPicker
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch panel.content {
+        case .forecast(let instrument):
+            forecast(instrument)
+
+        case .noWorkAssigned(let sprintName, let teamScopePoints):
+            noWorkAssigned(sprintName: sprintName, teamScopePoints: teamScopePoints)
+
+        case .namingActiveSprint(let candidates):
+            activeSprintPrompt(candidates)
+
+        case .noActiveSprint:
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No active sprint")
+                    .font(.subheadline.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Text("The Board reports no sprint in the active state, so there is nothing to read. Sprint Pulse waits for one to start rather than forecasting the last closed sprint.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+        case .nothing:
+            // Static text, not a spinner: an indeterminate `ProgressView` loops, and the panel
+            // ships with no motion at all (#9). In live mode this lasts from opening the window
+            // to the read arriving; in fixture mode, from launch to the first read.
+            Text(panel.liveBoardID == nil
+                 ? "Reading the fixture"
+                 : "Reading your Board")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// A read that failed, beside whatever was last read (#11). The sentence comes from the
+    /// model — the panel holds no failure vocabulary of its own — and the previous reading stays
+    /// on screen above it, which is the difference between stale and broken. #12 adds its age.
+    @ViewBuilder
+    private func problemLine(_ message: String) -> some View {
+        Text(message)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+    }
+
+    /// The empty subject, as its own state (#11). The forecast ran over an empty My Work and
+    /// answered `Finished`; showing that answer here would be the confident zero this state exists
+    /// to prevent, so the reading is replaced rather than annotated. Team Scope stays: it is the
+    /// one figure that lets the Operator tell "the sprint is full and none of it is mine" from
+    /// "the sprint is empty".
+    @ViewBuilder
+    private func noWorkAssigned(sprintName: String, teamScopePoints: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(sprintName)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            Text("No work assigned")
+                .font(.subheadline.bold())
+                .accessibilityAddTraits(.isHeader)
+            Text("No Issue in this sprint is assigned to \(panel.readingIdentity.name), the identity Jira resolved, so there is no forecast to make — and this is not the same as having finished. Check the identity and the Board above.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            pointsRow("Team Scope", teamScopePoints)
+                .foregroundStyle(.secondary)
+            Text("Every Issue in the sprint, not only yours. No forecast is computed over team scope.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The prompt #11 exists for: several active sprints, and the app will not pick one. The
+    /// answer is the Operator's and is remembered for the life of the sprint they name, so the
+    /// question is asked once per sprint rather than every time the window opens.
+    @ViewBuilder
+    private func activeSprintPrompt(_ candidates: [JiraSprint]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Which sprint is being tracked?")
+                .font(.subheadline.bold())
+                .accessibilityAddTraits(.isHeader)
+            Text("This Board reports \(candidates.count) sprints in the active state. Sprint Pulse forecasts one sprint and does not choose which. The answer is remembered for the life of the sprint you name.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Picker(
+                "Tracked sprint",
+                selection: Binding<Int?>(
+                    get: { panel.trackedSprintID },
+                    set: { if let chosen = $0 { panel.choose(trackedSprintID: chosen) } }
+                )
+            ) {
+                Text("Choose a sprint").tag(nil as Int?)
+                ForEach(candidates, id: \.id) { sprint in
+                    Text(trackedSprintTitle(sprint)).tag(sprint.id as Int?)
+                }
+            }
+            .pickerStyle(.menu)
+        }
+        // `.contain`, not `.combine`: the prompt carries a live control the reader has to reach.
+        .accessibilityElement(children: .contain)
+    }
+
+    /// A candidate sprint in the Board's own words, plus the one figure that tells two overlapping
+    /// cadences apart: when each ends. Sprint names are display text, not Jira *status* strings —
+    /// nothing outside the Status Map reads them (CONTEXT invariant 1).
+    private func trackedSprintTitle(_ sprint: JiraSprint) -> String {
+        let end = sprint.endDate.map(Self.sprintDateFormatter.string(from:)) ?? "no end date"
+        return "\(sprint.name) — ends \(end)"
+    }
+
+    /// A sprint end date to the day: the prompt's job is to distinguish two sprints, not to show
+    /// a timestamp.
+    private static let sprintDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "d MMM"
+        return formatter
+    }()
 
     /// The corpus browser (#9): every state the instrument can reach is one click away. The
     /// entries are `FixtureScenario.allCases`, which `FixtureCorpusTests` pins to the corpus
@@ -67,21 +217,20 @@ struct PanelView: View {
             }
             .pickerStyle(.menu)
             // What the panel itself knows: the reading in front of the Operator came from the
-            // bundled corpus, not a live sprint. Fixtures remain the default whenever no
-            // credential exists (#10) — and in M1 the panel keeps reading them even once one
-            // does, until the live sprint reads land behind the same gateway (#11).
-            Text("Fixture mode — the panel is reading a bundled scenario, not a live sprint.")
+            // bundled corpus, not a live sprint. Fixtures stay the reading for as long as the app
+            // has no complete live configuration (#10, #11); #15 adds the explicit switch back.
+            Text("Fixture mode — the panel is reading a bundled scenario, not a live sprint. Configuring a Board below replaces this reading.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// The credential setup (#10): a Jira Data Center base URL and a Personal Access Token,
-    /// resolved against `/rest/api/2/myself` and confirmed back to the Operator before
-    /// anything is stored. The rules are the panel's existing ones — no motion (a probe in
-    /// flight is a plain line, not a spinner), no meaning carried by colour alone, and every
-    /// failure named by its own distinct state rather than "could not connect".
+    /// The credential setup (#10) and the rest of the connection's configuration (#11): the one
+    /// Board to watch and the custom field that carries Estimates. The rules are the panel's
+    /// existing ones — no motion (a probe in flight is a plain line, not a spinner), no meaning
+    /// carried by colour alone, and every failure named by its own distinct state rather than
+    /// "could not connect".
     ///
     /// The token field is a `SecureField` and the draft is cleared the moment the attempt
     /// ends; the only place the token outlives the attempt is the single Keychain item, on a
@@ -102,10 +251,7 @@ struct PanelView: View {
                 Text("Identity confirmed: \(identity.name) — key \(identity.key).")
                     .font(.caption)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("The panel still reads bundled fixtures; live reads follow the Board configuration.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                boardConfiguration
                 Button("Remove credential") {
                     setup.removeCredential()
                 }
@@ -124,6 +270,57 @@ struct PanelView: View {
         // reader must reach individually — the combine that suits "label: figure" rows would
         // swallow the fields.
         .accessibilityElement(children: .contain)
+    }
+
+    /// The Board and Estimate fields (#11): configured once, remembered thereafter.
+    ///
+    /// The Board is typed rather than picked from a list because M1's bounded call surface has no
+    /// board listing to ask for — three read operations, and a fourth would be a change to #2
+    /// rather than an implementation detail (#11).
+    @ViewBuilder
+    private var boardConfiguration: some View {
+        if let boardID = panel.liveBoardID {
+            Text("Reading Board \(boardID).")
+                .font(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("No Board configured — the panel is reading fixtures.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        TextField("Board — id, or its URL (…/boards/172)", text: $setup.boardText)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("Board id or URL")
+
+        Button("Remember this Board") {
+            setup.saveBoard()
+        }
+
+        TextField("Estimate field — e.g. customfield_10007", text: $setup.estimateFieldText)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("Estimate custom field id")
+
+        Button("Remember this Estimate field") {
+            setup.saveEstimateField()
+        }
+
+        // Why the field is on the panel at all: custom field ids differ per instance, and read
+        // the wrong one and every Issue arrives Unestimated — which the instrument reports as
+        // a finished sprint. The failure is quiet, so the hint has to say where to look.
+        Text("If every Points figure reads 0 for a sprint that clearly has Estimates, this field is the wrong custom field for your instance.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        if let problem = setup.configurationProblem {
+            Text(problem)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
     }
 
     /// The setup form, shared by every state that is not a confirmed identity. The removal
@@ -423,6 +620,9 @@ struct PanelView: View {
         case .allFlowStates: return "Every Flow State in one sprint"
         case .unestimatedAcrossStates: return "Unestimated Issues across Actionable and Waiting"
         case .subtasksWithEstimates: return "Sub-tasks with Estimates, ignored"
+        case .twoActiveSprints: return "Two active sprints — the Board asks which one is tracked"
+        case .severalAssignees: return "Several assignees — My Work forecast, the rest context"
+        case .noWorkAssigned: return "No work assigned — the forecast has no subject"
         }
     }
 

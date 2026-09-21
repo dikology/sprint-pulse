@@ -1,10 +1,11 @@
 import Foundation
 import SprintPulseCore
 
-/// The non-secret half of the Jira connection: the base URL the Operator configured and the
-/// identity Jira resolved at setup (#10). Both are ordinary preferences — safe to store in
-/// `UserDefaults`, safe to show on screen, safe to survive a credential removal (the URL is
-/// configuration, not a secret).
+/// The non-secret half of the Jira connection: the base URL and Board the Operator configured,
+/// the sprint they named when the Board reported several, the Estimate field their instance keeps
+/// its numbers in, and the identity Jira resolved at setup (#10, #11). All ordinary preferences —
+/// safe to store in `UserDefaults`, safe to show on screen, safe to survive a credential removal
+/// (the URL is configuration, not a secret).
 ///
 /// The Personal Access Token is *not* stored here and this type has no way to store it: there
 /// is no property, key, or writer that takes one. That is the shape of the acceptance
@@ -15,6 +16,9 @@ struct JiraSettingsStore {
     private let defaults: UserDefaults
     private let baseURLKey = "jira-base-url"
     private let identityKey = "jira-identity"
+    private let boardIDKey = "jira-board-id"
+    private let trackedSprintIDKey = "jira-tracked-sprint-id"
+    private let estimateFieldIDKey = "jira-estimate-field-id"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -59,5 +63,61 @@ struct JiraSettingsStore {
     /// credential clears the identity that came with it, and keeps the base URL.
     func clearIdentity() {
         defaults.removeObject(forKey: identityKey)
+    }
+
+    // MARK: - The live read's configuration (#11)
+
+    /// The one Board Sprint Pulse watches, chosen once and remembered (CONTEXT "Board").
+    ///
+    /// An id rather than a name because the bounded call surface has no board listing to name one
+    /// with: `/rest/agile/1.0/board/{boardId}/sprint` is asked by number, and asking for the
+    /// Board list would be the fourth read operation M1 forbids (#2).
+    ///
+    /// Writing a different Board drops the remembered Active Sprint choice with it: an id is only
+    /// an answer about the Board it was given on, and the same number names a different sprint
+    /// somewhere else.
+    var boardID: Int? {
+        get { defaults.object(forKey: boardIDKey) as? Int }
+        nonmutating set {
+            if newValue != nil, newValue != boardID {
+                defaults.removeObject(forKey: trackedSprintIDKey)
+            }
+            if let newValue {
+                defaults.set(newValue, forKey: boardIDKey)
+            } else {
+                defaults.removeObject(forKey: boardIDKey)
+            }
+        }
+    }
+
+    /// The Active Sprint the Operator named when the Board reported several (#11).
+    ///
+    /// Not cleared when a sprint closes — `SprintSnapshot.resolveTrackedSprint` honours it only
+    /// while the sprint it names is still active, which is the same span as "for the life of that
+    /// sprint". It goes with the Board it was answered on (see `boardID`).
+    var trackedSprintID: Int? {
+        get { defaults.object(forKey: trackedSprintIDKey) as? Int }
+        nonmutating set {
+            if let newValue {
+                defaults.set(newValue, forKey: trackedSprintIDKey)
+            } else {
+                defaults.removeObject(forKey: trackedSprintIDKey)
+            }
+        }
+    }
+
+    /// Which custom field carries an Issue's Estimate on this instance. `nil` means
+    /// `JiraDecoding.estimateFieldID`, the documented default — and on an instance where the
+    /// points live under another id, the default decodes every Issue as Unestimated, which the
+    /// instrument reads as a finished sprint. The field is configured once for that reason (#11).
+    var estimateFieldID: String? {
+        get { defaults.string(forKey: estimateFieldIDKey) }
+        nonmutating set {
+            if let newValue {
+                defaults.set(newValue, forKey: estimateFieldIDKey)
+            } else {
+                defaults.removeObject(forKey: estimateFieldIDKey)
+            }
+        }
     }
 }

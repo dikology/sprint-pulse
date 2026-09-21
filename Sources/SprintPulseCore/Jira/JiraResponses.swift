@@ -49,8 +49,8 @@ public struct JiraIssue: Decodable, Equatable, Sendable {
 
 /// The `fields` object of a Jira issue.
 ///
-/// The story-point value lives in an instance-specific custom field
-/// (`JiraDecoding.storyPointsFieldID`).
+/// The Estimate lives in an instance-specific custom field, named for the domain concept rather
+/// than for what one installation calls it (`JiraDecoding.estimateFieldID`, #11).
 public struct JiraIssueFields: Decodable, Equatable, Sendable {
     public let summary: String
     public let issueType: JiraIssueType
@@ -79,7 +79,13 @@ public struct JiraIssueFields: Decodable, Equatable, Sendable {
         issueType = try container.decode(JiraIssueType.self, forKey: .issuetype)
         status = try container.decode(JiraStatus.self, forKey: .status)
         assignee = try container.decodeIfPresent(JiraUser.self, forKey: .assignee)
-        estimate = try container.decodeIfPresent(Double.self, forKey: Key(JiraDecoding.storyPointsFieldID))
+        // Which custom field holds the Estimate is per-instance configuration (#11), supplied
+        // through `userInfo` by `JiraDecoding.decoder(estimateFieldID:)`. A decoder built
+        // elsewhere — a hand-rolled `JSONDecoder`, a test decoding one issue — falls back to the
+        // documented default rather than reading nothing.
+        let fieldID = (decoder.userInfo[JiraDecoding.estimateFieldIDInfoKey] as? String)
+            ?? JiraDecoding.estimateFieldID
+        estimate = try container.decodeIfPresent(Double.self, forKey: Key(fieldID))
     }
 }
 

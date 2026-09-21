@@ -180,3 +180,26 @@ credential setup. Assignee matching is on `key`, falling back to `name`.
 Jira Data Center identifies users by `name` (mutable username) and `key` (stable across renames)
 — not Jira Cloud's `accountId`. Matching on the wrong field yields an empty forecast rather than
 an error, which is why identity is resolved from the API and never typed by the Operator.
+
+Because that failure is quiet, the empty result is named: where My Work holds no Issue, the
+interface shows **No Work Assigned** instead of the reading (`CONTEXT.md` invariant 13). Rules
+1–9 are untouched by it: `A = 0` and `W = 0` really is rule 2, and `Finished` remains the right
+word for a sprint whose work is completed. The two are told apart by My Work itself —
+`SprintSnapshot.myWork(assignedTo:)`, the one definition the forecast sums over and the app
+counts, so they cannot disagree about what the subject is (#11). A sprint that is genuinely full
+but none of it the Operator's reads this way, with Team Scope as the figure that proves it; a
+sprint whose work is all Done or Dropped reads as `Finished`.
+
+## Estimate field
+
+An Issue's Estimate lives in an instance-specific custom field, whose id is assigned in
+installation order and so differs between Jira instances. It is Operator configuration, decided
+once beside the Board (`JiraDecoding.estimateFieldID` is the fallback, not a constant of the API),
+and the read decodes the Estimate from it (#11).
+
+Getting it wrong is the same quiet failure as getting the identity wrong, and sometimes louder:
+where the id names a field the Issues do not carry, every Estimate decodes absent, `A`, `W`, and
+`C` are all 0, and the reading is rule 2 over an unmeasured sprint. Where it names a field holding
+something that is not a number, the whole response fails to decode and is reported as a malformed
+response. Neither is a wrong number on screen, but the first looks like one. Sub-task Estimates in
+the same listing are ignored whoever the field points at (invariant 8).

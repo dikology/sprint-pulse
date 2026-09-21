@@ -33,6 +33,13 @@ public enum JiraClientError: Error, Equatable {
     /// Reported as itself rather than folded into one of the states above.
     case unexpectedStatus(code: Int)
 
+    /// An Agile listing that never closed: `received` entries arrived over `pages` requests and
+    /// Jira still promised more (#11). Named rather than truncated — the difference between a
+    /// partial read and a whole sprint is the difference between a forecast and a fiction, and
+    /// the bound exists so a server that ignores `startAt` cannot turn one panel open into an
+    /// endless request loop.
+    case incompleteRead(received: Int, pages: Int)
+
     /// A connection-level failure that is neither an unreachable host nor a rejected
     /// certificate. Named by the system's own reason, so it is distinguishable from every
     /// state above instead of lying about which one it was.
@@ -62,6 +69,8 @@ public enum JiraClientError: Error, Equatable {
             return "Jira answered, but the response could not be read as a Data Center response of the expected shape."
         case .unexpectedStatus(let code):
             return "Jira answered with status \(code). Nothing was stored from this response."
+        case .incompleteRead(let received, let pages):
+            return "Jira's sprint listing did not close after \(pages) requests — \(received) Issues were read and more were still promised. Sprint Pulse forecasts a whole sprint or nothing, so nothing was read."
         case .connectionFailed(let reason):
             return "The connection to Jira failed: \(reason)"
         case .missingToken:

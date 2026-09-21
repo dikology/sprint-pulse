@@ -3,7 +3,8 @@ import Foundation
 /// A `JiraGateway` that reads Jira Data Center response JSON from a directory on disk.
 ///
 /// The JSON is in the exact shape of live responses, so the domain cannot distinguish this
-/// from the live client. Fixture mode is the default whenever no credential exists.
+/// from the live client. Fixture mode is the default whenever the app has no complete live
+/// configuration — no credential, or a credential with no Board yet (#10, #11).
 ///
 /// A fixture directory contains:
 /// - `active-sprints.json` — a `/rest/agile/1.0/board/{id}/sprint` envelope
@@ -111,7 +112,7 @@ public struct FixtureJiraGateway: JiraGateway {
 
     public func issues(inSprint sprintID: Int) async throws -> JiraSprintIssuesResponse {
         // The fixture models a single sprint, so `sprintID` selects nothing here. A live
-        // gateway reads the id.
+        // gateway reads the id and pages the listing until it closes (#11).
         try load("sprint-issues.json")
     }
 

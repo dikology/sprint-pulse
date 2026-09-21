@@ -96,13 +96,22 @@ operations and no others:
 3. Read one issue's legal transitions.
 4. Execute one transition.
 
-Refresh happens on window open, on explicit refresh, and as a targeted re-read of a single issue
-after a successful write. There is no background polling.
+M1 ships the first two plus `/myself` at setup, and nothing else: three reads, direct HTTP, no
+subprocess around a CLI. Where the first read returns more than one active sprint, the Operator
+names the tracked one and the answer is remembered for the life of that sprint. Refresh happens on
+window open, on explicit refresh, and as a targeted re-read of a single issue after a successful
+write. There is no background polling and no request at launch.
+
+Configuration is the base URL, one Board, and the custom field that carries Estimates — each
+entered once and remembered. The Board is typed rather than picked from a list because listing
+boards would be a fourth read; the Estimate field is on the instance, not in the API's contract,
+and guessing it wrong reads an entire sprint as unestimated.
 
 Identity is resolved once at credential setup via `/rest/api/2/myself`, storing both `key` and
 `name` and matching assignees on `key` with `name` as fallback. The Operator is never asked to
 type their own username — a typo there yields a confident, empty forecast rather than an error.
-A resolved identity matching zero issues in an active sprint is its own displayed state.
+A resolved identity matching zero issues in an active sprint is its own displayed state, never
+rendered as a zero reading.
 
 The PAT is a single Keychain item. It is never logged and never written to the cache.
 

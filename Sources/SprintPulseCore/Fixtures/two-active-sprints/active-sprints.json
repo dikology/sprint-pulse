@@ -1,0 +1,36 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "total": 2,
+  "isLast": true,
+  "values": [
+    {
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/5311",
+      "id": 5311,
+      "name": "Mobile Platform Sprint 34",
+      "state": "active",
+      "dateOffset": null,
+      "startDate": "2026-09-14T06:00:00.000+0000",
+      "endDate": "2026-09-25T15:00:00.000+0000",
+      "completeDate": null,
+      "activatedDate": "2026-09-14T06:03:22.000+0000",
+      "originBoardId": 172,
+      "goal": "Read one real sprint without changing anything in it.",
+      "avatarAliasId": null
+    },
+    {
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/5312",
+      "id": 5312,
+      "name": "Growth Experiment Sprint 7",
+      "state": "active",
+      "dateOffset": null,
+      "startDate": "2026-09-14T06:00:00.000+0000",
+      "endDate": "2026-10-09T15:00:00.000+0000",
+      "completeDate": null,
+      "activatedDate": "2026-09-14T06:11:40.000+0000",
+      "originBoardId": 214,
+      "goal": "Two overlapping cadences on one account is ordinary, not a mistake to resolve.",
+      "avatarAliasId": null
+    }
+  ]
+}

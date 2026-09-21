@@ -3,7 +3,9 @@ import SprintPulseCore
 
 /// The credential-setup flow (#10): the Operator names a Jira Data Center base URL and a
 /// Personal Access Token, the app asks `/rest/api/2/myself` who that credential is, and only
-/// a resolved identity is confirmed and persisted.
+/// a resolved identity is confirmed and persisted. #11 adds the rest of the connection's
+/// configuration beside it — the one Board to watch and the custom field that carries Estimates —
+/// which is remembered without a probe because it authenticates nothing.
 ///
 /// Setup is atomic in the direction that matters: nothing — not the token, not the base URL,
 /// not an identity — is stored *by the attempt* before Jira has answered. A failed probe
@@ -40,6 +42,27 @@ final class JiraSetupModel: ObservableObject {
     @Published var tokenText = ""
     @Published private(set) var state: State = .notConfigured
 
+    // MARK: - The Board and the Estimate field (#11)
+
+    /// What the Operator typed for the Board: an id, or a board URL to take one from.
+    @Published var boardText = ""
+
+    /// What the Operator typed for the custom field carrying Estimates on their instance.
+    @Published var estimateFieldText = ""
+
+    /// Why the last Board or Estimate-field entry was refused. Deliberately not `state`: this
+    /// flow's `state` is about the credential and the identity behind it, and a mistyped number
+    /// says nothing about either.
+    @Published private(set) var configurationProblem: String?
+
+    /// Called whenever the connection's configuration changes — a Board or Estimate field
+    /// remembered, a credential resolved or revoked — so the panel reads the connection the
+    /// Operator now has. Each of those is something the Operator did, which makes the fetch that
+    /// follows an explicit request like the Refresh button rather than a timer (#11's fetch
+    /// rule), and it is what stops the panel claiming to read a Board whose credential was just
+    /// removed.
+    var onConfigurationChanged: (() -> Void)?
+
     /// Attempts identity resolution with the given configuration. Contract: `.success` only
     /// for a Jira-resolved identity, `.failure` with a distinct `JiraClientError` otherwise —
     /// including refusing to proceed without a token.
@@ -69,10 +92,12 @@ final class JiraSetupModel: ObservableObject {
         ((try? credentials.countStoredItems()) ?? 0) > 0
     }
 
-    /// On launch the app restores the confirmed identity beside a stored credential, and the
-    /// base URL the Operator typed.
+    /// On launch the app restores the confirmed identity beside a stored credential, the base URL
+    /// the Operator typed, and the Board and Estimate field remembered with them (#11).
     private func hydrate() {
         baseURLText = settings.baseURLString ?? ""
+        boardText = settings.boardID.map(String.init) ?? ""
+        estimateFieldText = settings.estimateFieldID ?? ""
         if hasStoredCredential, let identity = settings.identity, settings.baseURLString != nil {
             state = .resolved(identity)
         } else {
@@ -130,12 +155,16 @@ final class JiraSetupModel: ObservableObject {
             settings.baseURLString = url.absoluteString
             settings.identity = identity
             state = .resolved(identity)
+            // The connection now resolves to a person, so a Board becomes readable. Where none is
+            // configured this costs the panel a fixture re-read and no request (#11).
+            onConfigurationChanged?()
         }
     }
 
-    /// Removes the stored credential — the Operator revokes the app's access locally (#10).
-    /// The identity resolved from it goes with the credential; the base URL is configuration
-    /// and stays, so configuring a fresh token does not mean retyping the URL.
+    /// Removes the stored credential — the Operator revokes the app's access locally (#10). The
+    /// identity resolved from it goes with the credential; the base URL, the Board and the
+    /// Estimate field are configuration and stay, so configuring a fresh token does not mean
+    /// retyping them.
     func removeCredential() {
         do {
             try credentials.delete()
@@ -149,5 +178,78 @@ final class JiraSetupModel: ObservableObject {
         settings.clearIdentity()
         tokenText = ""
         state = .notConfigured
+        // Revocation has to reach the panel in the same breath. Left alone it would go on showing
+        // the last live reading under a "Live — Board N" header, claiming an access the Operator
+        // has just taken away (#11).
+        onConfigurationChanged?()
+    }
+
+    // MARK: - Remembering the Board and the Estimate field (#11)
+
+    /// Remembers the one Board to watch. Validated before stored: a Board is read by number, and
+    /// storing `nil` for an unparsable entry would leave the panel reading no Board at all while
+    /// appearing configured.
+    func saveBoard() {
+        guard let boardID = Self.boardID(in: boardText) else {
+            configurationProblem =
+                "That is not a Board. Type its id, or paste its address — the number comes after \"boards/\" in https://jira.example.com/jira/software/projects/MP/boards/172"
+            return
+        }
+        settings.boardID = boardID
+        boardText = String(boardID)
+        configurationProblem = nil
+        onConfigurationChanged?()
+    }
+
+    /// Remembers which custom field carries an Issue's Estimate on this instance. Custom field ids
+    /// are assigned in installation order, so there is nothing to infer it from: read the wrong
+    /// field and every Issue arrives Unestimated, which the instrument reports as `Finished` —
+    /// a whole sprint of work read as none. Empty restores the documented default.
+    func saveEstimateField() {
+        let entry = estimateFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !entry.isEmpty else {
+            settings.estimateFieldID = nil
+            configurationProblem = nil
+            onConfigurationChanged?()
+            return
+        }
+        let digits = entry.hasPrefix("customfield_")
+            ? String(entry.dropFirst("customfield_".count))
+            : entry
+        guard !digits.isEmpty, digits.allSatisfy(\.isNumber) else {
+            configurationProblem =
+                "An Estimate field is a custom field id: customfield_10007, or just its number, 10007."
+            return
+        }
+        let fieldID = "customfield_\(digits)"
+        settings.estimateFieldID = fieldID
+        estimateFieldText = fieldID
+        configurationProblem = nil
+        onConfigurationChanged?()
+    }
+
+    /// The Board id in an entry: a bare number, or the number in a pasted board address — which is
+    /// where an Operator reading it off their own browser will get it from. Both of the address
+    /// shapes Data Center puts in that location bar are accepted: the project board path
+    /// (`…/boards/172`) and the classic query parameter (`RapidBoard.jspa?rapidView=172`).
+    ///
+    /// Anything that is not a number at that position is refused rather than guessed at: `17abc`
+    /// is a typo, not a Board whose id starts with 17.
+    static func boardID(in entry: String) -> Int? {
+        let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        for marker in ["boards/", "rapidView="] {
+            if let range = trimmed.range(of: marker) {
+                return boardID(after: trimmed[range.upperBound...])
+            }
+        }
+        return boardID(after: Substring(trimmed))
+    }
+
+    private static func boardID(after candidate: Substring) -> Int? {
+        let digits = candidate.prefix(while: \.isNumber)
+        guard !digits.isEmpty else { return nil }
+        let rest = candidate[digits.endIndex...]
+        guard rest.isEmpty || "?/#&".contains(rest.first!) else { return nil }
+        return Int(digits)
     }
 }

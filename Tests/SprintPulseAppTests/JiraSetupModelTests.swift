@@ -172,17 +172,147 @@ final class JiraSetupModelTests: XCTestCase {
 
     func test_removeCredential_deletesTheItemAndTheIdentity_andKeepsTheBaseURL() async throws {
         let model = makeModel(probe: .success(identity))
+        var changes = 0
+        model.onConfigurationChanged = { changes += 1 }
         model.baseURLText = baseURL
         model.tokenText = sentinel
         await model.connect()
+        XCTAssertEqual(changes, 1, "a resolved credential makes a Board readable — the panel is told")
 
         model.removeCredential()
+        XCTAssertEqual(changes, 2, "and revoking it is heard in the same breath, not at next refresh (#11)")
 
         XCTAssertNil(try credentials.read())
         XCTAssertEqual(try credentials.countStoredItems(), 0)
         XCTAssertNil(settings.identity)
         XCTAssertEqual(settings.baseURLString, baseURL, "the URL is configuration, not a secret")
         XCTAssertEqual(model.state, .notConfigured, "fixtures are the default again, without deleting anything else")
+    }
+
+    // MARK: - The Board and the Estimate field (#11)
+
+    /// The Board is the Operator's configuration, remembered once, and read off the Board's own
+    /// address when it is pasted — no probe, because remembering a number authenticates nothing.
+    func test_saveBoard_acceptsAnId_orABoardURL_andRemembersIt() throws {
+        for (entry, expected) in [
+            ("172", 172),
+            ("  172  ", 172),
+            ("https://jira.example.com/jira/software/projects/MP/boards/172", 172),
+            ("https://jira.example.com/secure/RapidBoard.jspa?rapidView=172", 172),
+            (".../boards/172?selectedIssue=MOB-1201", 172),
+        ] {
+            defaults.removePersistentDomain(forName: suiteName)
+            let model = makeModel(probe: .success(identity))
+            model.boardText = entry
+
+            model.saveBoard()
+
+            XCTAssertEqual(settings.boardID, expected, entry)
+            XCTAssertNil(model.configurationProblem, entry)
+        }
+    }
+
+    /// A mistyped Board is refused and *not* stored: a Board of `nil` alongside a configured
+    /// credential would leave the panel reading fixtures while the Operator believes it reads their
+    /// sprint (#11's "remembered once" only means something if what is remembered is valid).
+    func test_saveBoard_refusesWhatIsNotABoard_andStoresNothing() throws {
+        for entry in ["Mobile Platform", "172abc", "17 2", "boards/"] {
+            defaults.removePersistentDomain(forName: suiteName)
+            let model = makeModel(probe: .success(identity))
+            var remembered = 0
+            model.onConfigurationChanged = { remembered += 1 }
+            model.boardText = entry
+
+            model.saveBoard()
+
+            XCTAssertNil(settings.boardID, entry)
+            XCTAssertNotNil(model.configurationProblem, entry)
+            XCTAssertEqual(remembered, 0, "\(entry): a refused entry asks the panel for nothing")
+        }
+    }
+
+    func test_saveBoard_firesTheRememberedCallback_soThePanelReadsIt() throws {
+        let model = makeModel(probe: .success(identity))
+        var remembered = 0
+        model.onConfigurationChanged = { remembered += 1 }
+        model.boardText = "172"
+
+        model.saveBoard()
+
+        XCTAssertEqual(remembered, 1, "saving a Board is an explicit request to read it (#11)")
+    }
+
+    /// The Estimate field is per-instance, and an Operator who finds it will write the id in one
+    /// of the two forms Jira shows it in. Both arrive at the same stored value.
+    func test_saveEstimateField_normalisesEitherForm() throws {
+        for entry in ["customfield_10007", "10007", " customfield_10007 "] {
+            defaults.removePersistentDomain(forName: suiteName)
+            let model = makeModel(probe: .success(identity))
+            model.estimateFieldText = entry
+
+            model.saveEstimateField()
+
+            XCTAssertEqual(settings.estimateFieldID, "customfield_10007", entry)
+            XCTAssertEqual(model.estimateFieldText, "customfield_10007", "the field shows what was stored")
+            XCTAssertNil(model.configurationProblem, entry)
+        }
+    }
+
+    func test_saveEstimateField_emptyRestoresTheDefault() throws {
+        let model = makeModel(probe: .success(identity))
+        model.estimateFieldText = ""
+
+        model.saveEstimateField()
+
+        XCTAssertNil(settings.estimateFieldID, "absent means the documented default, decided by the reader")
+        XCTAssertNil(model.configurationProblem)
+    }
+
+    func test_saveEstimateField_refusesSomethingThatIsNotACustomFieldId() throws {
+        for entry in ["Story Points", "customfield_", "abc123"] {
+            defaults.removePersistentDomain(forName: suiteName)
+            let model = makeModel(probe: .success(identity))
+            model.estimateFieldText = entry
+
+            model.saveEstimateField()
+
+            XCTAssertNil(settings.estimateFieldID, entry)
+            XCTAssertNotNil(model.configurationProblem, entry)
+        }
+    }
+
+    /// Launch restores the Board and the Estimate field beside the credential, so "configured
+    /// once" survives a quit (#11).
+    func test_launch_restoresTheBoardAndTheEstimateField() throws {
+        try credentials.save(sentinel)
+        settings.baseURLString = baseURL
+        settings.identity = identity
+        settings.boardID = 172
+        settings.estimateFieldID = "customfield_10007"
+
+        let model = makeModel(probe: .failure(.malformedResponse))
+
+        XCTAssertEqual(model.boardText, "172")
+        XCTAssertEqual(model.estimateFieldText, "customfield_10007")
+    }
+
+    /// Removing the credential is the Operator revoking access, not re-doing configuration: the
+    /// Board and the Estimate field are kept for the next token, exactly as the base URL is.
+    func test_removeCredential_keepsTheBoardAndEstimateField() async throws {
+        let model = makeModel(probe: .success(identity))
+        model.baseURLText = baseURL
+        model.tokenText = sentinel
+        await model.connect()
+        model.boardText = "172"
+        model.saveBoard()
+        model.estimateFieldText = "10007"
+        model.saveEstimateField()
+
+        model.removeCredential()
+
+        XCTAssertEqual(settings.boardID, 172)
+        XCTAssertEqual(settings.estimateFieldID, "customfield_10007")
+        XCTAssertEqual(settings.trackedSprintID, nil)
     }
 
     // MARK: - Helpers

@@ -18,7 +18,8 @@ The one Jira board Sprint Pulse watches, chosen once by the Operator.
 
 **Active Sprint**:
 The Jira sprint on the Board that Sprint Pulse is tracking. Where the Board has several sprints
-in the `active` state, the Operator names the one being tracked; Sprint Pulse never infers it.
+in the `active` state, the Operator names the one being tracked; Sprint Pulse never infers it. The
+answer is remembered for the life of that sprint, and belongs to the Board it was given on.
 _Avoid_: current sprint, iteration
 
 **Forecast Subject**:
@@ -28,7 +29,14 @@ _Avoid_: user, owner
 
 **My Work**:
 The issues in the Active Sprint assigned to the operator. The forecast is computed over these
-and nothing else.
+and nothing else. Defined once — `SprintSnapshot.myWork(assignedTo:)` — which is also how the app
+knows whether there is anything to forecast at all.
+
+**No Work Assigned**:
+The displayed state where the resolved identity matches zero Issues in the Active Sprint. It is
+not a Confidence State and not a zero: the forecast has no subject, and the panel says so instead
+of rendering rule 2's `Finished`. Sub-tasks never give it a subject.
+_Avoid_: empty sprint, finished (for an empty My Work), zero points
 
 **Team Scope**:
 Every issue in the Active Sprint, regardless of assignee. Displayed as a dim secondary Points
@@ -42,7 +50,9 @@ parent.
 
 **Estimate**:
 The story-point value carried by an Issue. Only task-level Issues carry an Estimate; sub-task
-estimates are ignored entirely rather than rolled up.
+estimates are ignored entirely rather than rolled up. Jira keeps it in a custom field whose id is
+assigned per installation, so the field is Operator configuration (#11) — and reading the wrong
+one decodes every Estimate as absent.
 _Avoid_: story points, size, points (when referring to a single Issue)
 
 **Points**:
@@ -185,3 +195,10 @@ _Avoid_: scope creep, churn
 12. A displayed Confidence State always carries its Reading — the rule that matched and the Caps
     that fired — as data. Its Explanation is rendered from that Reading and re-derives no
     arithmetic of its own.
+13. An empty My Work is never rendered as a confident zero. Where the resolved identity matched no
+    Issue, the panel shows No Work Assigned instead of the reading, and the menu bar shows no
+    number; rule 2's `Finished` stays what it means — work completed, not work absent.
+14. A live read is issued by the Operator, not by the app: when the panel window opens, on
+    explicit refresh, and in answer to something they did to the connection — remembering a Board
+    or an Estimate field, resolving or revoking a credential, or naming the tracked sprint among
+    several active ones. No timer and no polling reaches Jira, and no live read happens at launch.

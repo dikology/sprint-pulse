@@ -43,5 +43,20 @@ public enum FixtureScenario: String, CaseIterable, Identifiable, Sendable {
     case unestimatedAcrossStates = "unestimated-across-states"
     case subtasksWithEstimates = "subtasks-with-estimates"
 
+    // MARK: Live reads
+    // The states the M1 gateway meets on a real Board (#11), browsable here for the same reason
+    // the rest of the corpus exists: a state that is reachable live has to be reachable by
+    // clicking before it can be verified at all.
+    /// A Board reporting two sprints in the `active` state — the one scenario the Operator is
+    /// prompted about rather than shown, because the instrument never infers which sprint is
+    /// being tracked.
+    case twoActiveSprints = "two-active-sprints"
+    /// A sprint whose Issues belong to three people and one empty assignee, of whom the Operator
+    /// is one: My Work and Team Scope are two different numbers on purpose.
+    case severalAssignees = "several-assignees"
+    /// A resolved identity that matches nothing in the Active Sprint except a sub-task: No Work
+    /// Assigned, which is a state of its own and not a zero (CONTEXT invariant 13).
+    case noWorkAssigned = "no-work-assigned"
+
     public var id: String { rawValue }
 }

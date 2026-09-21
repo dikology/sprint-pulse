@@ -5,7 +5,10 @@ import Foundation
 /// The panel holds no forecast logic: it displays the fields of an `Instrument` and nothing
 /// more. Each M0 ticket widens this type — Flow States and Points per Flow State (#4), Working
 /// Days Remaining (#5), the rates and Confidence State (#6), the `ConfidenceReading` that
-/// explains them (#7), and the Scope Delta against the Sprint Baseline (#8).
+/// explains them (#7), and the Scope Delta against the Sprint Baseline (#8). M1 adds no field:
+/// reading a live sprint changed the gateway's implementations, not the model (#11) — and the one
+/// thing the panel needs that is not in here, whether My Work is empty, it asks
+/// `SprintSnapshot.myWork(assignedTo:)` for, the same call the forecast sums over.
 public struct Instrument: Equatable, Sendable {
     /// The Active Sprint's name, for the panel header.
     public let sprintName: String

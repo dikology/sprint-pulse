@@ -20,21 +20,18 @@ for what it is and why, and [`docs/adr/`](./docs/adr/) for the decisions.
 ## Build and test
 
 ```sh
-swift test          # the domain
-swift run SprintPulse   # the menu-bar app, on fixtures
+swift test          # the domain, the gateway, and the app's seams — no network, no Jira
+swift run SprintPulse   # the menu-bar app
 ```
 
-The panel's reading still runs entirely on fixtures, and first launch presents no
-authentication wall: a scenario picker at the top of the panel loads any fixture in the
-corpus, so every state the instrument can reach is reachable by clicking, at the moment each
-scenario pins for itself. What the credential half of M1 adds beside it
-([#10](https://github.com/dikology/sprint-pulse/issues/10)) is a Jira connection section:
-it stores a Personal Access Token as a single macOS Keychain item and resolves the Operator's
-identity from `/rest/api/2/myself` — but it fetches no sprint yet, so fixtures stay the
-default reading whatever the connection state is, and live reads follow with the Board
-configuration (#11).
+With no credential, or a credential with no Board yet, the panel reads the fixture corpus:
+a scenario picker at the top lists every state the instrument can reach, each read at the moment
+that scenario pins for itself, so everything below is explorable by clicking before anything is
+authenticated. Configure a base URL, a Personal Access Token, and one Board and the panel reads
+that Board's live sprint instead — the same gateway protocol, the same forecast, no scenario
+picker until the credential goes away (#15 adds the switch back).
 
-It shows Points per Flow State for the Active Sprint's My Work: Actionable and Waiting as
+The reading shows Points per Flow State for the Active Sprint's My Work: Actionable and Waiting as
 separate totals, Completed and Dropped as their own figures, a count of Unestimated Issues,
 and any Unmapped Status named prominently. Above them sit Working Days Remaining and Elapsed,
 the Required Rate, the Demonstrated Rate, and the Confidence State with the one-line explanation
@@ -81,6 +78,21 @@ falling back to any other credential source. The failure states are distinguishe
 collapsed: unreachable host, TLS rejection, rejected token, 404 on the configured path, and
 a malformed response each say which one they were. The credential can be removed from the
 panel, which returns the app to its fixture default.
+
+The live gateway ([#11](https://github.com/dikology/sprint-pulse/issues/11)) is the second
+M1 ticket, and the one the milestone was scoped around: a `JiraGateway` reading the active
+sprints on one Board and that sprint's Issues over `/rest/agile/1.0/`, behind the same protocol
+the fixtures already satisfy. The forecast did not change by a line. The bound holds — three
+read operations in total, direct HTTP with no subprocess, and the recorded-request tests fail on
+a fourth; listings are paged to their own `total`, because a slice of a sprint is not a smaller
+truth. A Board with two active sprints asks the Operator which one is tracked and remembers the
+answer for the life of that sprint; the app never guesses. A read happens on window open, on
+Refresh, and when the Operator names the Board to read — there is no timer anywhere in the app,
+and no request at launch. A failed fetch leaves the last reading standing and says which condition
+it met, and a resolved identity that matches no Issue at all is shown as **No Work Assigned**
+rather than as `Finished`. Two more things are configured once and remembered: the Board, typed
+by id because listing boards would be a fourth read, and the custom field carrying Estimates,
+which is per installation and decides whether any Points are found at all.
 
 ## Licence
 

@@ -8,6 +8,10 @@ import XCTest
 /// The response bodies are transcribed in the shape Jira Data Center emits from
 /// `/rest/api/2/myself`, including the fields the model ignores — a decoding bug should
 /// surface as a wrong identity here, the same style the fixture corpus uses for sprint reads.
+///
+/// #11's two sprint reads live on this type too and are tested in `LiveJiraGatewayTests`, at the
+/// gateway boundary the protocol draws. They fail through the same `accept` rule asserted here,
+/// which is why one set of failure states covers three operations.
 final class JiraHTTPClientTests: XCTestCase {
     /// An opaque stand-in for a real PAT: what the token asserts about here is that it only
     /// ever travels in the `Authorization` header, never in a message or a description.
@@ -130,6 +134,7 @@ final class JiraHTTPClientTests: XCTestCase {
         .pathNotFound(path: "https://jira.example.com/rest/api/2/myself"),
         .malformedResponse,
         .unexpectedStatus(code: 503),
+        .incompleteRead(received: 50, pages: 40),
         .connectionFailed(reason: "proxy asked for authentication"),
         .missingToken,
         .invalidBaseURL(detail: "not http(s)"),
