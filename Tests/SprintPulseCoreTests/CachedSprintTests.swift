@@ -2,8 +2,10 @@ import XCTest
 @testable import SprintPulseCore
 
 /// The cache's own value type (#12), tested where it lives: in the domain, as a value the app
-/// hands back in. Two things have to be true of it and neither is obvious from reading it — the
-/// snapshot comes back out *identical*, and no credential has anywhere in it to be stored.
+/// hands back in. The claim tested here is the one everything downstream rests on — a cached read
+/// comes back out of storage *identical*, sub-tasks, unassigned Issues and absent Estimates all
+/// still the distinctions the forecast reads them for. That no credential is ever written into the
+/// slot is a storage question, and `SprintCacheStoreTests` sweeps the bytes for it.
 final class CachedSprintTests: XCTestCase {
     let operatorIdentity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
 

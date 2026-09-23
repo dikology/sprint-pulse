@@ -679,7 +679,7 @@ final class ForecastTests: XCTestCase {
         XCTAssertEqual(i.reading, ConfidenceReading(rule: .ratioNoSweat, caps: []))
         XCTAssertEqual(i.confidenceState, .noSweat, "the same sprint read a moment later is the same reading")
         XCTAssertFalse(i.predatesCurrentWorkingDay)
-        XCTAssertEqual(i.readAt, isoDate("2026-09-21T09:30:00Z"), "the reading carries the moment its data was taken")
+        XCTAssertEqual(i.readAt, isoDate("2026-09-21T11:45:00Z"), "the reading carries the moment its data was taken")
     }
 
     /// AC 6 and AC 10's second case: once the data predates the current Working Day, Confidence

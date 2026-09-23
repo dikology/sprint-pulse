@@ -136,13 +136,15 @@ simply absent — the same rule as an Intent with no legal transition.
 ## Fixtures
 
 Fixtures are JSON in the exact shape of Jira Data Center's responses, served through the same
-gateway as the live client. `SprintPulseCore` cannot tell which it is talking to. Two
-deliberate exceptions, both of them the app's own values rather than something Jira returns,
+gateway as the live client. `SprintPulseCore` cannot tell which it is talking to. Three
+deliberate exceptions, all of them the app's own values rather than something Jira returns,
 part of the scenario but never passing through the gateway: a Scope Delta scenario also carries
-`baseline.json`, the stored Sprint Baseline in the app's own JSON (#8); and every scenario
+`baseline.json`, the stored Sprint Baseline in the app's own JSON (#8); every scenario
 pins the moment it is read at in `now.json` — a fixture is a *frozen observation*, and read
 against the wall clock the same sprint walks past its end date and shows a different Confidence
-State than the scenario is named for (#9).
+State than the scenario is named for (#9); and a cache scenario pins beside those the moment its
+*data* was taken, `read-at.json`, which is the one thing separating the corpus's two cached-read
+scenarios (#12).
 
 Fixture mode is the **default whenever no credential exists**, so the app is fully explorable
 before anything is authenticated. The panel's scenario picker (#9) lists the whole corpus, so

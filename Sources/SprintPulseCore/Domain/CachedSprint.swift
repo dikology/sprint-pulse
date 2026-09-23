@@ -36,7 +36,7 @@ public struct CachedSprint: Codable, Equatable, Sendable {
     }
 
     /// An issue as the cache holds it — every field the decoded response carries, so the snapshot
-    /// comes back out identical rather than approximately so. `SprintCacheStoreTests` pins that.
+    /// comes back out identical rather than approximately so. `CachedSprintTests` pins that.
     public struct Issue: Codable, Equatable, Sendable {
         public let id: String
         public let key: String

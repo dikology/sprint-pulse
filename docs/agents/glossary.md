@@ -61,13 +61,20 @@ rather than information.
 
 ### The age of a read
 
-A read carries two instants: `now`, the moment the reading is evaluated at, and the moment its
-**data** was taken. Rule 1's second trigger is a comparison between the second and the first.
+A read carries two instants: `now`, the moment the reading is evaluated at, and `readAt`, the
+moment its **data** was taken — the instant a live response arrived, or the timestamp the cache was
+persisted with. Rule 1's second trigger is a comparison between the second and the first.
 
 | Term | Definition |
 | --- | --- |
 | **The current Working Day** | `now`'s Working Day, or — when `now` falls in none — the most recent Working Day before it. A Saturday's is Friday; a declared Monday holiday's is the Friday before. |
-| **Predates the current Working Day** | The data's moment is earlier than the start of the current Working Day. One comparison, not a count: no Working Days are summed, and `WDR`/`WDE` are untouched by it. |
+| **Predates the current Working Day** | `readAt < startOfDay(currentWorkingDay(now))`. One comparison, not a count: no Working Days are summed, and a weekend or a holiday changes only which day is current. |
+
+Nothing else about the reading is recomputed from `readAt`: `WDR`, `WDE`, and both rates keep
+coming from `now` and the sprint's own dates, and the Points are the Points in the data. Staleness
+withdraws the Confidence State through rule 1 and changes no arithmetic — which is why `WDR = 0`
+against a cache from last Friday still reads rule 1's withdrawal rather than rule 5's `Off Track`:
+counting the days that have passed since a stale read is not the same as forecasting it.
 
 The unit is the day because a burn rate's unit is a Working Day: Points read at 09:00 are still
 today's Points at 17:00, and Points read at 23:59 yesterday are not. A cache is judged against the
@@ -120,24 +127,8 @@ both hold, the Unmapped Status is named: it is the thing the Operator can go and
 that is too old resolves itself on the next read that gets through. Both are rule 1 because both
 withdraw the *comparison* while leaving every total standing — the Points, the Flow-State
 partition, and the Scope Delta are all still displayed, and `A` and `C` are still computed from the
-Issues on screen rather than replaced by a dash.
-
-### The age of the data
-
-| Term | Definition |
-| --- | --- |
-| **Current Working Day** | The Working Day a moment falls in — or, when it falls in none (a weekend, a declared Non-Working Date), the most recent Working Day before it. Saturday's is Friday. |
-| **Predates the current Working Day** | `readAt < startOfDay(currentWorkingDay(now))`. One comparison, not a count: no Working Day is summed, and a weekend or a holiday changes only which day is current. |
-
-`readAt` is the instant the data behind a reading was taken: the moment a live response arrived, or
-the timestamp the cache was persisted with. `now` stays the instant the reading is evaluated at.
-Rates, WDR and WDE are computed against `now` and the sprint's own dates regardless of `readAt` —
-staleness withdraws the Confidence State through rule 1 and changes no arithmetic.
-
-The day is the unit because the burn rate's unit is a Working Day: Points read at 09:00 are still
-today's Points at 17:00, and Points read at 23:59 yesterday are not. A calendar with no Working Day
-in it at all reports every read as predating — there is no day for it to be current in, and
-`Unknown` is preferred to a guess (CONTEXT invariant 7).
+Issues on screen rather than replaced by a dash. The second trigger's own terms are defined above,
+in "The age of a read".
 
 ## Caps
 

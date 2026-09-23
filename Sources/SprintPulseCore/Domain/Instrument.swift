@@ -76,12 +76,18 @@ public struct Instrument: Equatable, Sendable {
     /// remaining total without moving this figure (#8).
     public var scopeDelta: Double { liveSprintPoints - baselinePoints }
 
-    /// The moment the data behind this reading was taken (#12). A reading carries it so the panel
-    /// can say how old its own numbers are instead of letting a cached sprint present as a current
-    /// one — the age is a fact about the data, not something the view infers from a clock.
+    /// The moment the data behind this reading was taken (#12). A reading carries it so that
+    /// nothing downstream has to re-derive the age of its own numbers to say what it is — the
+    /// alternative is a view comparing a timestamp against a clock it has no business owning.
     ///
-    /// For a fixture this is the moment the scenario pins in its own `now.json` (#9): a scenario
+    /// For a fixture this is the moment its scenario says its data was read at: `read-at.json`
+    /// where a cache scenario carries one, and otherwise the `now.json` it pins (#9) — a scenario
     /// *is* an observation taken then.
+    ///
+    /// The panel's age line reads `PanelModel.dataReadAt` rather than this field, deliberately:
+    /// the states that are not readings — No Work Assigned above all, since it shows a Team Scope
+    /// total — display fetched figures that carry no `Instrument`, and one line with two sources
+    /// would be a contradiction waiting to happen (#12).
     public let readAt: Date
 
     /// Whether that data predates the current Working Day — the judgement behind rule 1's

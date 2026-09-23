@@ -40,7 +40,8 @@ final class PanelModel: ObservableObject {
         /// The bundled corpus, chosen by the picker. The reading whenever the app has no complete
         /// live configuration (#10, #11).
         case fixture(FixtureScenario)
-        /// One Board, over HTTP — and the fetch that just filled this in succeeded.
+        /// One Board, over HTTP, and the read that filled this in got through — a reading, or a
+        /// Board state like the active-sprint prompt. Not a claim that a forecast is on screen.
         case live(boardID: Int)
         /// The same Board, but the reading on screen is the last one that got through, not the
         /// result of this read (#12). Refresh still belongs on the panel: the Operator is looking
@@ -111,6 +112,37 @@ final class PanelModel: ObservableObject {
     /// pins for itself (#9) still reaches the reading as `Instrument.readAt`.
     @Published private(set) var dataReadAt: Date?
     @Published private(set) var dataBoardID: Int?
+
+    /// How old the data on screen is, in the words the panel puts beside the Board it belongs to,
+    /// or `nil` when nothing has been fetched.
+    ///
+    /// Here rather than in the view because it is the only comparison the panel makes, and it needs
+    /// a clock: `PanelModel` is the type that owns "now" (#11), and a caption computed from "now
+    /// minus then" cannot be re-timed by an app with no timer in it. The wording is deliberately
+    /// calendar-day coarse — "today", "yesterday", a date — because that is what survives being
+    /// printed once and read an hour later. It is *not* the domain's verdict: the day the
+    /// forecast was withdrawn over is `WorkingCalendar`'s, and on a Saturday "yesterday" and
+    /// "still the current Working Day" are both true of the same read.
+    var dataAgeText: String? {
+        guard let readAt = dataReadAt else { return nil }
+        let calendar = Calendar.current
+        let now = Date()
+        let day: String
+        if calendar.isDate(readAt, inSameDayAs: now) {
+            day = "today"
+        } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+                  calendar.isDate(readAt, inSameDayAs: yesterday) {
+            day = "yesterday"
+        } else {
+            day = "on \(Self.readDayFormatter.string(from: readAt))"
+        }
+        var line = "Data read \(day) at \(Self.readTimeFormatter.string(from: readAt))"
+        if case .cached = source {
+            // The one sentence #12 exists for: this reading is old, and it is not broken.
+            line += " — the last read that got through"
+        }
+        return line + "."
+    }
 
     /// The panel's line for a read that failed, held apart from `content` so a failure leaves the
     /// previous reading on screen: stale, not broken (#11), and #12 puts an age beside it.
@@ -189,7 +221,7 @@ final class PanelModel: ObservableObject {
     /// must be as legible as its panel (#9).
     ///
     /// Neither form carries the age (#12), and that is a decision rather than an omission: what the
-    /// bar shows is Points remaining, which is exactly the figure AC 7 keeps on screen when data
+    /// bar shows is Points remaining, which is exactly the figure #12 keeps on screen when data
     /// goes stale because it stays true of the sprint whenever it was counted. The thing that
     /// withdraws is Confidence, which the bar never claimed. Where a reading came from and when it
     /// was taken are the panel's to say, and the panel is one click away by design.
@@ -346,7 +378,9 @@ final class PanelModel: ObservableObject {
         // the moment it is observed at, which is the only thing separating the corpus's two
         // cached-read scenarios. Every other scenario is a fresh observation, where the two
         // instants are the same one — and neither is ever the wall clock, which is what lets the
-        // picker promise a state and produce it on any machine, on any day.
+        // picker promise a state and produce it on any day of the year. (The verdict on whether
+        // `readAt` predates the Working Day is still the device calendar's, as it is everywhere in
+        // the app; the two moments sit four hours apart in UTC so no plausible zone separates them.)
         let readAt = try FixtureJiraGateway.bundledReadAt(scenario) ?? moment
 
         apply(
@@ -392,8 +426,8 @@ final class PanelModel: ObservableObject {
         }
 
         // One instant for the moment the data arrived and the moment it is judged at: a live read
-        // is fresh by definition, and `readAt` is the timestamp the cache persists (AC 1) and the
-        // panel ages against (AC 3). `now` stays an argument to the domain either way (#2); only a
+        // is fresh by definition, and `readAt` is the timestamp the cache persists (#12 AC 1) and the
+        // panel ages against (#12 AC 3). `now` stays an argument to the domain either way (#2); only a
         // fixture pins one, because only a fixture is a frozen observation.
         let readAt = Date()
         dataReadAt = readAt
@@ -401,7 +435,7 @@ final class PanelModel: ObservableObject {
         // The only place the cache is written, and it sits past the point where anything could have
         // thrown: both envelopes decoded, every page of both listings arrived, the tracked sprint
         // resolved. A refused Board, a truncated page, and a response that is not a response leave
-        // the last good read exactly as it was (AC 8) — which is the read already on screen, since
+        // the last good read exactly as it was (#12 AC 8) — which is the read already on screen, since
         // `showCachedRead` put it there before this request was made.
         cache.save(CachedSprint(boardID: configuration.boardID, readAt: readAt, snapshot: snapshot))
 
@@ -423,7 +457,7 @@ final class PanelModel: ObservableObject {
     // MARK: - The cached read (#12)
 
     /// This Board's last successful read, put on screen before its request is made and labelled
-    /// for what it is (AC 2, AC 4).
+    /// for what it is (#12 AC 2, AC 4).
     ///
     /// Three situations, told apart by what the app can actually know: which Board the reading on
     /// screen came from (`dataBoardID`), and which Board the cache slot belongs to.
@@ -532,6 +566,25 @@ final class PanelModel: ObservableObject {
             content = .forecast(result.instrument)
         }
     }
+
+    /// The day a read belongs to, for the age line. The year is spelled out because the reading an
+    /// Operator is trusting may predate the year they think they are in, and "on 3 Jan" is the one
+    /// sentence that could quietly be a year wrong.
+    private static let readDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter
+    }()
+
+    /// The hour and minute of the read, in the Operator's own clock — the age line is read against
+    /// the moment the Operator is looking at it, not against a UTC sprint date.
+    private static let readTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
 
     /// One sentence for a read that failed, from a vocabulary the panel does not extend: the
     /// client's states carry their own distinct messages (#10), a Keychain refusal carries its

@@ -268,6 +268,10 @@ final class PanelModelTests: XCTestCase {
         await model.refresh()
 
         XCTAssertEqual(model.content, .forecast(before), "the reading survives the failed fetch")
+        XCTAssertEqual(
+            cache.load()?.readAt, before.readAt,
+            "and the drawer it was served from is untouched — a failed read overwrites nothing (#12)"
+        )
         XCTAssertEqual(model.readProblem, JiraClientError.unreachableHost(host: "jira.example.com").message)
         XCTAssertFalse(try XCTUnwrap(model.readProblem).contains(token), "the message is showable")
     }
@@ -648,6 +652,125 @@ final class PanelModelTests: XCTestCase {
         XCTAssertTrue(instrument.predatesCurrentWorkingDay, "read on Friday, observed on Monday")
         XCTAssertNil(browsing.dataReadAt, "and a fixture is not a fetch")
         XCTAssertEqual(cache.load(), stored, "the corpus left the cached read alone")
+    }
+
+    /// #12's AC 3, at the seam that can be tested: the age line is the model's sentence, not the
+    /// view's, because stating an age needs a clock and the clock is a platform concern. Day-grain
+    /// wording only — the panel has no timer to keep a countdown true, so it never prints one.
+    func test_theAgeLineNamesTheDayOfTheReadAndNotACountdown() async throws {
+        try configureLive()
+        let online = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await online.windowDidAppear()
+
+        XCTAssertEqual(online.dataAgeText, "Data read today at " + Self.time(online.dataReadAt) + ".")
+
+        // A read from yesterday: the date gives way to "yesterday", never to a number of hours.
+        // Day-grained on purpose — an hour offset would make this assertion depend on the clock
+        // time the suite happens to run at.
+        let entry = try XCTUnwrap(cache.load())
+        let calendar = Calendar.current
+        func aged(_ days: Int) -> CachedSprint {
+            CachedSprint(
+                boardID: entry.boardID,
+                readAt: calendar.date(byAdding: .day, value: -days, to: entry.readAt)!,
+                snapshot: entry.snapshot
+            )
+        }
+
+        cache.save(aged(1))
+        let offline = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await offline.windowDidAppear()
+
+        let age = try XCTUnwrap(offline.dataAgeText)
+        XCTAssertTrue(age.hasPrefix("Data read yesterday at "), age)
+        // #12's AC 4 in one clause: the reading is old, and it is not broken.
+        XCTAssertTrue(age.contains("the last read that got through"), age)
+        XCTAssertFalse(age.contains("ago"), "no countdown to go stale beside the window")
+
+        // Older still: an absolute date, which is checkable by hand and cannot drift.
+        cache.save(aged(3))
+        let dated = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await dated.windowDidAppear()
+        let datedText = try XCTUnwrap(dated.dataAgeText)
+        XCTAssertTrue(datedText.hasPrefix("Data read on "), datedText)
+        XCTAssertFalse(datedText.contains("today"), datedText)
+        XCTAssertFalse(datedText.contains("yesterday"), datedText)
+    }
+
+    private static func time(_ date: Date?) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date ?? Date())
+    }
+
+    /// The one place the panel calls a reading cached without re-evaluating it: the standing
+    /// reading is this Board's own, but the slot has nothing to hand back — nothing has got through
+    /// since, or `save`'s `try?` swallowed a write. #11's rule stands, and the caption says what is
+    /// true of it either way: this did not come from the fetch that just failed. The verdict on its
+    /// age is then the one taken when it was fetched, and the next window open re-judges it.
+    func test_aStandingBoardReadingIsLabelledCachedWhenTheSlotCannotHelp() async throws {
+        try configureLive()
+        let box = GatewayBox(
+            gateway: JSONGateway(sprints: oneSprint, issues: myWork, error: nil)
+        )
+        let model = PanelModel(
+            settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            liveGateway: { _, _ in box.gateway }
+        )
+        await model.windowDidAppear()
+        let standing = try XCTUnwrap(model.instrument)
+
+        defaults.removeObject(forKey: SprintCacheStore.defaultsKey)
+        box.gateway = JSONGateway(
+            sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")
+        )
+        await model.refresh()
+
+        XCTAssertEqual(model.content, .forecast(standing), "the reading stands, exactly as it was fetched")
+        XCTAssertEqual(model.source, .cached(boardID: boardID))
+        XCTAssertEqual(model.dataReadAt, standing.readAt, "aged by the read itself, not by the failure")
+        XCTAssertNotNil(model.readProblem)
+    }
+
+    /// A state that is not a reading survives a later failure, even with a usable cache behind it:
+    /// the prompt is the newest thing the Board said, and a cached forecast is older information
+    /// about a sprint the Operator has not named (#11), not a fallback to be preferred to it.
+    func test_apromptSurvivesAFailedFetchEvenWithACacheToOffer() async throws {
+        try configureLive()
+        let box = GatewayBox(
+            gateway: JSONGateway(sprints: oneSprint, issues: myWork, error: nil)
+        )
+        let model = PanelModel(
+            settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            liveGateway: { _, _ in box.gateway }
+        )
+        await model.windowDidAppear()
+        XCTAssertNotNil(cache.load(), "the drawer holds a read of this Board")
+
+        // The Board changes shape — two active sprints, neither named — and then stops answering.
+        box.gateway = JSONGateway(sprints: twoSprints, issues: myWork, error: nil)
+        await model.refresh()
+        XCTAssertNotNil(model.content.sprintCandidates, "the prompt is what a successful read said")
+
+        box.gateway = JSONGateway(
+            sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")
+        )
+        await model.refresh()
+
+        XCTAssertNotNil(
+            model.content.sprintCandidates,
+            "and a later failure does not bury it under a cached forecast"
+        )
+        XCTAssertNil(model.instrument, "the cache was not shown over the prompt")
+        XCTAssertEqual(model.source, .live(boardID: boardID))
+        XCTAssertEqual(model.readProblem, JiraClientError.unreachableHost(host: "jira.example.com").message)
     }
 
     // MARK: - Helpers

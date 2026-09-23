@@ -4,8 +4,8 @@ import SprintPulseCore
 /// Persists the Sprint Baseline across launches. The domain only computes the next baseline;
 /// holding it is a platform concern, so it lives here in the app.
 ///
-/// `UserDefaults` is enough for one small `Codable` value; M1 revisits storage alongside the
-/// cache.
+/// `UserDefaults` is enough for one small `Codable` value, and the read cache (#12) made the
+/// same choice beside this one rather than inventing a second convention.
 struct BaselineStore {
     private let defaults: UserDefaults
     private let key = "sprint-baseline"

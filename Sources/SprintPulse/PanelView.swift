@@ -101,45 +101,21 @@ struct PanelView: View {
         }
     }
 
-    /// How old the data on screen is (AC 3: always visible, not only to whoever happens to read the
-    /// panel at the right moment).
+    /// How old the data on screen is (#12 AC 3: always visible, not only to whoever happens to
+    /// read the panel at the right moment).
     ///
-    /// The instant is spelled out absolutely — "today at 14:32", "on 21 Sep at 09:14" — because the
-    /// panel has nothing to re-time it with: there is no timer anywhere in this app (#11), so a
-    /// relative figure printed once ("3 hours ago") starts lying within the hour. Days are coarse
-    /// enough to hold true for the life of a window and specific enough to be checked against the
-    /// Working Day the forecast was withdrawn over.
-    ///
-    /// `readAt` comes from the model rather than from `Instrument.readAt` so the line also stands
-    /// under the states that are not readings — No Work Assigned shows a Points total, and that
-    /// total has an age like any other.
+    /// The sentence is `PanelModel.dataAgeText`'s, not this view's: stating an age needs a clock,
+    /// and the clock is the platform concern the model exists to own (#11). It is also the only
+    /// comparison anywhere between the domain and the screen, which makes it the one piece of panel
+    /// wording worth having under test — a view function would not be.
     @ViewBuilder
     private var dataAgeLine: some View {
-        if let readAt = panel.dataReadAt {
-            Text(dataAge(readAt))
+        if let age = panel.dataAgeText {
+            Text(age)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private func dataAge(_ readAt: Date) -> String {
-        let calendar = Calendar.current
-        let day: String
-        if calendar.isDate(readAt, inSameDayAs: Date()) {
-            day = "today"
-        } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: Date()),
-                  calendar.isDate(readAt, inSameDayAs: yesterday) {
-            day = "yesterday"
-        } else {
-            day = "on \(Self.readDayFormatter.string(from: readAt))"
-        }
-        var line = "Data read \(day) at \(Self.readTimeFormatter.string(from: readAt))"
-        if case .cached = panel.source {
-            // The one sentence #12 exists for: this reading is old, and it is not broken.
-            line += " — the last read that got through"
-        }
-        return line + "."
     }
 
     @ViewBuilder
@@ -266,25 +242,6 @@ struct PanelView: View {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "d MMM"
-        return formatter
-    }()
-
-    /// The day a cached read belongs to, for the age line. The year is spelled out because the
-    /// reading an Operator is trusting may predate the year they think they are in, and "on 3 Jan"
-    /// is the one sentence that could quietly be a year wrong.
-    private static let readDayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "d MMM yyyy"
-        return formatter
-    }()
-
-    /// The hour and minute of the read, in the Operator's own clock — the age line's job is to be
-    /// compared against the moment they are looking at it, not against a UTC sprint date.
-    private static let readTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "HH:mm"
         return formatter
     }()
 
@@ -732,7 +689,7 @@ struct PanelView: View {
         case .unmappedStatus:
             "Confidence withdraws: an Unmapped Status leaves its Issues outside every total."
         case .dataPredatesWorkingDay:
-            "Confidence withdraws: this data was read before the current Working Day — the Points still stand, the comparison between them does not."
+            "Confidence withdraws: this data predates the current Working Day — the Points stand, the comparison between them does not."
         case .nothingRemaining:
             "No Actionable or Waiting Points remain."
         case .nothingActionableRemaining:
