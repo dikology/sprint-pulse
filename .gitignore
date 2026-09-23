@@ -4,6 +4,7 @@
 DerivedData/
 .DS_Store
 .qwen/
+.vscode/
 
 # Credentials and company specifics. This repository is public: nothing below may
 # ever be committed — real tokens, real instance config, and raw captures from a
