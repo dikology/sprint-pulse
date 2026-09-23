@@ -159,6 +159,13 @@ matched and the Caps that fired. A demotion is never shown without its Explanati
 that was not demoted never claims one.
 _Avoid_: reason, tooltip, justification
 
+**Cached Read**:
+The last read of the Board that got through, kept by the app beside the instant its data was taken.
+What the panel shows when Jira cannot be reached — a reading that survived the request that failed,
+never dressed as a current one: it is labelled as cached, its age is on screen, and once it predates
+the current Working Day the forecast withdraws to `Unknown` while its Points stay.
+_Avoid_: stale data, offline mode, fallback, snapshot (the Sprint Baseline took that word)
+
 **Sprint Baseline**:
 A snapshot of the Active Sprint's Issues and Estimates, taken the first time Sprint Pulse
 observes the sprint as active. It exists to explain change, never to be forecast against.
@@ -202,3 +209,8 @@ _Avoid_: scope creep, churn
     explicit refresh, and in answer to something they did to the connection — remembering a Board
     or an Estimate field, resolving or revoking a credential, or naming the tracked sprint among
     several active ones. No timer and no polling reaches Jira, and no live read happens at launch.
+15. Every reading carries the instant its data was taken, and a Cached Read is never shown as a
+    live one: the panel says which of the two it is and how old the data is. Data that predates the
+    current Working Day withdraws Confidence to `Unknown` through rule 1 while its Point totals, its
+    Flow-State partition, and its Scope Delta stay on screen. A read that failed overwrites neither
+    the Cached Read nor the Sprint Baseline.

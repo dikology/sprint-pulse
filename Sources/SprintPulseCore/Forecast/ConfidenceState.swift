@@ -8,8 +8,8 @@ import Foundation
 /// never demotes them, because there is no lower band to move to (`demotedOneBand`).
 public enum ConfidenceState: Sendable, Equatable {
     /// Too little is known to say anything: fewer than two elapsed Working Days, zero Completed
-    /// Points, or any Unmapped Status present. (A stale cache also forces this in M1, once a
-    /// cache exists to go stale.) Always preferred to a guess.
+    /// Points, an Unmapped Status present, or data read before the current Working Day (#12).
+    /// Always preferred to a guess.
     case unknown
     case offTrack
     case tight

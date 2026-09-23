@@ -61,6 +61,48 @@ public struct WorkingCalendar: Equatable, Sendable {
         workingDays(from: sprintStart, through: now)
     }
 
+    // MARK: - The current Working Day (#12)
+
+    /// The Working Day `date` belongs to — or, when it belongs to none (a weekend, a declared
+    /// Non-Working Date), the most recent one before it. Returned at local midnight.
+    ///
+    /// This is the day a reading is judged against: Saturday's current Working Day is Friday,
+    /// because Friday is the day the sprint was last burning on.
+    ///
+    /// The search back is bounded at a year, because "the most recent Working Day before today"
+    /// has no answer on a calendar that declares none — an empty `workingWeekdays`, or a shutdown
+    /// the Operator marked off for longer than a year. `nil` says that out loud rather than
+    /// returning a day that is not one, and `predatesCurrentWorkingDay` turns it into `Unknown`,
+    /// which invariant 7 prefers to a guess. A shutdown of ordinary length — a factory's fortnight,
+    /// a national holiday run — is found its other side of.
+    public func currentWorkingDay(for date: Date) -> Date? {
+        var day = calendar.startOfDay(for: date)
+        for _ in 0..<366 {
+            if isWorkingDay(day) { return day }
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else {
+                return nil
+            }
+            day = previous
+        }
+        return nil
+    }
+
+    /// Rule 1's stale-data trigger (`docs/agents/glossary.md`, #12): was data taken at `readAt`
+    /// read *before* the current Working Day — the one `now` falls in?
+    ///
+    /// The day, not the hour, is the unit: a burn rate is measured in Working Days, so Points read
+    /// at 09:00 are still today's Points at 17:00, and Points read at 23:59 yesterday are not.
+    /// Nothing is counted — this is one comparison against `currentWorkingDay(for: now)`, so a
+    /// declared holiday and a weekend both mean the same thing: the last day the sprint was
+    /// burning on is the one the data is judged against.
+    ///
+    /// A pattern with no Working Day in it at all is reported as predating: `Unknown` is always
+    /// preferred to a guess (CONTEXT invariant 7), and there is no day to be current in.
+    public func predatesCurrentWorkingDay(readAt: Date, now: Date) -> Bool {
+        guard let startOfCurrentWorkingDay = currentWorkingDay(for: now) else { return true }
+        return readAt < startOfCurrentWorkingDay
+    }
+
     /// The count of Working Days in `[from, through]`, inclusive of both ends by calendar day.
     /// `0` when `from` is after `through`.
     private func workingDays(from: Date, through: Date) -> Int {

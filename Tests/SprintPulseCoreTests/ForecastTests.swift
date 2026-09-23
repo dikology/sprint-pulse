@@ -98,7 +98,12 @@ final class ForecastTests: XCTestCase {
                 liveSprintPoints: 28,
                 // First observation: the Baseline is captured from these same Points, so the
                 // sprint has not moved from anything.
-                baselinePoints: 28
+                baselinePoints: 28,
+                // #12's two additions, both about the data rather than the sprint: this reading
+                // was taken at the moment its scenario pins, so it is in its own Working Day and
+                // rule 1's stale trigger cannot be what withdrew it.
+                readAt: isoDate("2026-09-08T12:00:00Z"),
+                predatesCurrentWorkingDay: false
             )
         )
         XCTAssertEqual(result.instrument.scopeDelta, 0)
@@ -636,6 +641,141 @@ final class ForecastTests: XCTestCase {
         XCTAssertEqual(i.unestimatedCount, 0, "nothing of the Operator's is unsized either — the set is empty")
         XCTAssertEqual(i.liveSprintPoints, 21, "the sprint is full; only the Operator's share of it is empty")
         XCTAssertEqual(i.confidenceState, .finished, "what rule 2 computes over an empty set")
+    }
+
+    // MARK: - The age of the data (#12)
+
+    /// The corpus's two cache scenarios are one sprint read at two moments, so each carries a
+    /// `read-at.json` beside its `now.json`. Read through the same fixture helpers the panel uses:
+    /// the moment, the bundled Baseline, and the snapshot all arrive as values.
+    private func cachedReading(_ scenario: FixtureScenario) async throws -> Instrument {
+        let readAt = try XCTUnwrap(
+            FixtureJiraGateway.bundledReadAt(scenario),
+            "\(scenario.rawValue): a cache scenario with no read moment is just another fresh read"
+        )
+        return Forecast.evaluate(
+            snapshot: try await snapshot(scenario.rawValue),
+            identity: operatorIdentity,
+            statusMap: .default,
+            workingCalendar: workingCalendar,
+            baseline: try FixtureJiraGateway.bundledBaseline(scenario),
+            readAt: readAt,
+            now: try pinnedNow(scenario.rawValue)
+        ).instrument
+    }
+
+    /// AC 10's first case: data counted earlier in the same Working Day still forecasts. Points
+    /// are Points whenever they were counted, and the day is the unit the burn rate is measured
+    /// in — so a morning read is still today's reading at teatime, and rules 2–9 answer as they
+    /// would have live.
+    func test_evaluate_dataReadEarlierInTheSameWorkingDay_stillForecasts() async throws {
+        let i = try await cachedReading(.cacheWithinWorkingDay)
+
+        XCTAssertEqual(i.actionablePoints, 5)
+        XCTAssertEqual(i.completedPoints, 12)
+        XCTAssertEqual(i.workingDaysRemaining, 5)
+        XCTAssertEqual(i.requiredRate, 1.0, "A 5 ÷ WDR 5")
+        XCTAssertEqual(i.demonstratedRate, 2.0, "C 12 ÷ WDE 6")
+        XCTAssertEqual(i.reading, ConfidenceReading(rule: .ratioNoSweat, caps: []))
+        XCTAssertEqual(i.confidenceState, .noSweat, "the same sprint read a moment later is the same reading")
+        XCTAssertFalse(i.predatesCurrentWorkingDay)
+        XCTAssertEqual(i.readAt, isoDate("2026-09-21T09:30:00Z"), "the reading carries the moment its data was taken")
+    }
+
+    /// AC 6 and AC 10's second case: once the data predates the current Working Day, Confidence
+    /// withdraws to `Unknown` by rule 1 — and everything that is a *total* rather than a
+    /// comparison stays computed and on screen, which is AC 7. Both cache scenarios bundle the
+    /// same day-one Baseline, so the Scope Delta here is a real +7 rather than a zero doing
+    /// nothing.
+    func test_evaluate_dataFromAnEarlierWorkingDay_isUnknownWithPointsStillVisible() async throws {
+        let i = try await cachedReading(.cachePredatesWorkingDay)
+
+        XCTAssertTrue(i.predatesCurrentWorkingDay)
+        XCTAssertEqual(i.reading.rule, .dataPredatesWorkingDay, "the Reading says which trigger withdrew it")
+        XCTAssertEqual(i.confidenceState, .unknown)
+        XCTAssertEqual(i.reading.caps, [], "nothing fired, so the withdrawal is the whole explanation")
+        XCTAssertEqual(i.reading.demotions, 0)
+
+        // The figures a stale cache still answers.
+        XCTAssertEqual(i.actionablePoints, 5)
+        XCTAssertEqual(i.waitingPoints, 0)
+        XCTAssertEqual(i.completedPoints, 12)
+        XCTAssertEqual(i.droppedPoints, 5)
+        XCTAssertEqual(i.points(.toDo), 2)
+        XCTAssertEqual(i.points(.inProgress), 3)
+        XCTAssertEqual(i.points(.done), 12)
+        XCTAssertEqual(i.unestimatedCount, 0)
+        XCTAssertEqual(i.workingDaysRemaining, 5)
+        XCTAssertEqual(i.workingDaysElapsed, 6)
+        XCTAssertEqual(i.liveSprintPoints, 43)
+        XCTAssertEqual(i.baselinePoints, 36)
+        XCTAssertEqual(i.scopeDelta, 7, "the sprint grew underneath the Operator, and that stays true")
+
+        // Both rates are still what the totals say — `Unknown` withdraws the *comparison*, not the
+        // arithmetic a reader checks by hand (invariant 12).
+        XCTAssertEqual(i.requiredRate, 1.0)
+        XCTAssertEqual(i.demonstratedRate, 2.0)
+    }
+
+    /// Rule 1 is rule 1 whatever else holds: an Unmapped Status is what the Operator can go and
+    /// map, so it is the trigger the Reading names when both fired. The data's own age is still
+    /// carried beside it, because which rule won is not the same question as how old the data is.
+    func test_evaluate_anUnmappedStatusIsNamedBeforeTheStaleTrigger_whenBothHold() async throws {
+        let i = Forecast.evaluate(
+            snapshot: try await snapshot("unmapped-status"),
+            identity: operatorIdentity, statusMap: .default, workingCalendar: workingCalendar,
+            baseline: nil,
+            readAt: isoDate("2026-09-07T12:00:00Z"),
+            now: isoDate("2026-09-08T12:00:00Z")
+        ).instrument
+
+        XCTAssertEqual(i.reading.rule, .unmappedStatus)
+        XCTAssertEqual(i.confidenceState, .unknown)
+        XCTAssertTrue(i.predatesCurrentWorkingDay, "both conditions hold, and the panel shows the age either way")
+    }
+
+    /// A sprint whose work all sits Done or Dropped reads `Finished` on fresh data and `Unknown`
+    /// on last week's: rule 1 comes first, so "finished" is always a claim about today, never an
+    /// echo of the last time the app got through.
+    func test_evaluate_finishedOnStaleData_isUnknownNotAFinishedClaim() async throws {
+        let snapshot = try await snapshot("confidence-finished")
+        let moment = try pinnedNow("confidence-finished")
+
+        let fresh = Forecast.evaluate(
+            snapshot: snapshot, identity: operatorIdentity, statusMap: .default,
+            workingCalendar: workingCalendar, baseline: nil, now: moment
+        ).instrument
+        let cached = Forecast.evaluate(
+            snapshot: snapshot, identity: operatorIdentity, statusMap: .default,
+            workingCalendar: workingCalendar, baseline: nil,
+            readAt: moment.addingTimeInterval(-3 * 24 * 60 * 60), now: moment
+        ).instrument
+
+        XCTAssertEqual(fresh.confidenceState, .finished, "the same data, read today, is rule 2")
+        XCTAssertEqual(cached.confidenceState, .unknown)
+        XCTAssertEqual(cached.reading.rule, .dataPredatesWorkingDay)
+        XCTAssertEqual(cached.completedPoints, fresh.completedPoints, "and the Points it still shows")
+    }
+
+    /// The six-argument entry point is not a default that could go stale: it says the data was
+    /// read at the moment it is judged at, which is every M0 reading there ever was. This is what
+    /// lets the whole existing corpus — and #4's whole-value assertion — keep running unedited
+    /// while #12 adds a trigger to rule 1.
+    func test_evaluate_readAtTheMomentOfEvaluation_neverPredatesItsOwnWorkingDay() async throws {
+        let snapshot = try await snapshot("several-assignees")
+        let moment = try pinnedNow("several-assignees")
+
+        let sixArgument = Forecast.evaluate(
+            snapshot: snapshot, identity: operatorIdentity, statusMap: .default,
+            workingCalendar: workingCalendar, baseline: nil, now: moment
+        ).instrument
+        let explicit = Forecast.evaluate(
+            snapshot: snapshot, identity: operatorIdentity, statusMap: .default,
+            workingCalendar: workingCalendar, baseline: nil, readAt: moment, now: moment
+        ).instrument
+
+        XCTAssertFalse(sixArgument.predatesCurrentWorkingDay)
+        XCTAssertEqual(sixArgument, explicit)
     }
 }
 /// A calendar date from an ISO-8601 string, for pinning "today" and baseline timestamps.

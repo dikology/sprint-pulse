@@ -81,7 +81,17 @@ final class FixtureCorpusTests: XCTestCase {
         (.noWorkAssigned, "test_evaluate_identityMatchingNoIssues_isItsOwnStateNotAConfidentZero", .finished),
     ]
 
-    private var allRows: [Row] { scenariosFromIssueOne + scenariosBeyondIssueOne + scenariosFromIssueEleven }
+    /// #12's cached-read scenarios: one sprint at two read moments. The corpus's only pair whose
+    /// two directories hold the same Board and the same Issues, because the thing under test is not
+    /// the sprint at all — it is how old the data behind a reading was.
+    private let scenariosFromIssueTwelve: [Row] = [
+        (.cacheWithinWorkingDay, "test_evaluate_dataReadEarlierInTheSameWorkingDay_stillForecasts", .noSweat),
+        (.cachePredatesWorkingDay, "test_evaluate_dataFromAnEarlierWorkingDay_isUnknownWithPointsStillVisible", .unknown),
+    ]
+
+    private var allRows: [Row] {
+        scenariosFromIssueOne + scenariosBeyondIssueOne + scenariosFromIssueEleven + scenariosFromIssueTwelve
+    }
 
     func test_audit_theTablesCoverThePickerAndTheCorpusExactly() throws {
         let audited = Set(allRows.map(\.scenario))
@@ -121,8 +131,9 @@ final class FixtureCorpusTests: XCTestCase {
     }
 
     /// The picker's honesty check: every scenario is loaded the way the panel loads it —
-    /// through the gateway in Jira shape, at its own pinned moment, with its bundled
-    /// Baseline — and must produce the Confidence State its row promises.
+    /// through the gateway in Jira shape, at its own pinned moment and the moment its own data
+    /// claims to have been read at, with its bundled Baseline — and must produce the Confidence
+    /// State its row promises.
     ///
     /// The Active Sprint is resolved through `resolveTrackedSprint`, which is how the panel
     /// resolves it since #11: the scenario whose Board reports two active sprints is read at the
@@ -147,6 +158,10 @@ final class FixtureCorpusTests: XCTestCase {
                 FixtureJiraGateway.pinnedNow(row.scenario),
                 "\(row.scenario.rawValue): no pinned moment"
             )
+            // A scenario that is about the cache carries a `read-at.json` too; every other
+            // scenario's data was read at the moment it was observed, which is what the panel
+            // passes when it has just fetched (#12).
+            let readAt = try FixtureJiraGateway.bundledReadAt(row.scenario) ?? moment
             let snapshot = SprintSnapshot(sprint: sprint, issues: issues.issues)
             let instrument = Forecast.evaluate(
                 snapshot: snapshot,
@@ -154,12 +169,18 @@ final class FixtureCorpusTests: XCTestCase {
                 statusMap: .default,
                 workingCalendar: workingCalendar,
                 baseline: try FixtureJiraGateway.bundledBaseline(row.scenario),
+                readAt: readAt,
                 now: moment
             ).instrument
             XCTAssertEqual(instrument.sprintName, sprint.name, "\(row.scenario.rawValue)")
             XCTAssertEqual(
                 instrument.confidenceState, row.state,
                 "\(row.scenario.rawValue): clicking this picker entry must show the state its name promises"
+            )
+            XCTAssertEqual(
+                instrument.predatesCurrentWorkingDay,
+                workingCalendar.predatesCurrentWorkingDay(readAt: readAt, now: moment),
+                "\(row.scenario.rawValue): the reading carries the same verdict on its data's age"
             )
             if emptyMyWork.contains(row.scenario) {
                 XCTAssertEqual(
@@ -168,6 +189,40 @@ final class FixtureCorpusTests: XCTestCase {
                 )
             }
         }
+    }
+
+    /// The two cache scenarios are a controlled comparison or they are nothing: same Board, same
+    /// Issues, same moment of observation, one column of the pair differing. If they drifted apart
+    /// in the sprint data as well, the picker would be showing two different sprints and calling
+    /// the difference staleness (#12).
+    func test_cacheScenarios_differOnlyInTheMomentTheirDataWasRead() async throws {
+        var envelopes: [String: (sprints: JiraSprintsResponse, issues: JiraSprintIssuesResponse, now: Date, readAt: Date)] = [:]
+        for scenario in [FixtureScenario.cacheWithinWorkingDay, .cachePredatesWorkingDay] {
+            let gateway = try FixtureJiraGateway.bundled(scenario)
+            let sprints = try await gateway.activeSprints()
+            let sprint = try XCTUnwrap(SprintSnapshot.resolveTrackedSprint(in: sprints, chosenSprintID: nil).sprint)
+            envelopes[scenario.rawValue] = (
+                sprints,
+                try await gateway.issues(inSprint: sprint.id),
+                try XCTUnwrap(FixtureJiraGateway.pinnedNow(scenario)),
+                try XCTUnwrap(FixtureJiraGateway.bundledReadAt(scenario))
+            )
+        }
+        let fresh = try XCTUnwrap(envelopes[FixtureScenario.cacheWithinWorkingDay.rawValue])
+        let stale = try XCTUnwrap(envelopes[FixtureScenario.cachePredatesWorkingDay.rawValue])
+
+        XCTAssertEqual(fresh.sprints.values, stale.sprints.values, "the same Board")
+        XCTAssertEqual(fresh.issues.issues, stale.issues.issues, "the same Issues")
+        XCTAssertEqual(fresh.now, stale.now, "observed at the same moment")
+        XCTAssertNotEqual(fresh.readAt, stale.readAt, "…except that one of them is older")
+        XCTAssertFalse(
+            workingCalendar.predatesCurrentWorkingDay(readAt: fresh.readAt, now: fresh.now),
+            "the within-day one is inside its Working Day"
+        )
+        XCTAssertTrue(
+            workingCalendar.predatesCurrentWorkingDay(readAt: stale.readAt, now: stale.now),
+            "and the other is not"
+        )
     }
 
     /// The other half of the two-active-sprints scenario: before the Operator answers, there is

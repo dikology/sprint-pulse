@@ -52,8 +52,13 @@ extension ConfidenceReading {
     /// The whole reading in one call: the nine-rule table first, then the Caps — the evaluation
     /// order `docs/agents/glossary.md` fixes, expressed by the sequence of these two calls rather
     /// than by a note beside them.
+    ///
+    /// `dataPredatesWorkingDay` is rule 1's second trigger (#12), computed by `Forecast` from the
+    /// read's own moment against the injected `now` — a stale cache withdraws the *comparison*,
+    /// which is a domain judgement, not something the panel is left to notice.
     public static func evaluate(
         unmappedStatusPresent: Bool,
+        dataPredatesWorkingDay: Bool,
         actionablePoints: Double,
         waitingPoints: Double,
         requiredRate: Double?,
@@ -62,6 +67,7 @@ extension ConfidenceReading {
     ) -> ConfidenceReading {
         let rule = ConfidenceRule.evaluate(
             unmappedStatusPresent: unmappedStatusPresent,
+            dataPredatesWorkingDay: dataPredatesWorkingDay,
             actionablePoints: actionablePoints,
             waitingPoints: waitingPoints,
             requiredRate: requiredRate,

@@ -13,7 +13,9 @@ import SprintPulseCore
 ///
 /// Below the header sits one state of `PanelModel.Content` (#11): the reading, an empty My Work,
 /// a sprint that has to be named, a Board with no active sprint, or nothing read yet. A failed
-/// fetch is not one of them — it is a line beside whatever was last read.
+/// fetch is not one of them — it is a line beside whatever was last read, and since #12 the caption
+/// above it says whether that was the Board a moment ago or the cache, and when the data behind it
+/// was taken.
 struct PanelView: View {
     @ObservedObject var panel: PanelModel
     @ObservedObject var setup: JiraSetupModel
@@ -55,21 +57,26 @@ struct PanelView: View {
         }
     }
 
-    /// What the panel is reading, and the one control that asks for a fresh live read.
+    /// What the panel is reading, when its data was read, and the one control that asks for a fresh
+    /// live read.
     @ViewBuilder
     private var readingSource: some View {
-        if let boardID = panel.liveBoardID {
+        if let boardID = panel.boardID {
             VStack(alignment: .leading, spacing: 4) {
                 // The Board and the identity are named because a live reading is the one thing on
                 // this panel the Operator cannot reproduce from a fixture: they need to see which
-                // Board was asked, and as whom (#11).
-                Text("Live — Board \(boardID), as \(panel.readingIdentity.name)")
+                // Board was asked, and as whom (#11). The first word says whether the answer came
+                // off it just now or survived the walk from the train (#12), and it comes first
+                // because that is the question an Operator asks of a number before they ask
+                // anything else of it.
+                Text(sourceCaption(boardID))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Refresh") {
                     Task { await panel.refresh() }
                 }
+                dataAgeLine
                 Text("Reads when this window opens and on Refresh. Never on a timer.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -78,6 +85,61 @@ struct PanelView: View {
         } else {
             scenarioPicker
         }
+    }
+
+    private func sourceCaption(_ boardID: Int) -> String {
+        let read = "Board \(boardID), as \(panel.readingIdentity.name)"
+        switch panel.source {
+        case .fixture:
+            // Unreachable: a fixture read has no Board, which is what `panel.boardID` is for. The
+            // words are here rather than a `default:` so the caption's vocabulary stays one list.
+            return "Fixture — \(read)"
+        case .live:
+            return "Live — \(read)"
+        case .cached:
+            return "Cached — \(read)"
+        }
+    }
+
+    /// How old the data on screen is (AC 3: always visible, not only to whoever happens to read the
+    /// panel at the right moment).
+    ///
+    /// The instant is spelled out absolutely — "today at 14:32", "on 21 Sep at 09:14" — because the
+    /// panel has nothing to re-time it with: there is no timer anywhere in this app (#11), so a
+    /// relative figure printed once ("3 hours ago") starts lying within the hour. Days are coarse
+    /// enough to hold true for the life of a window and specific enough to be checked against the
+    /// Working Day the forecast was withdrawn over.
+    ///
+    /// `readAt` comes from the model rather than from `Instrument.readAt` so the line also stands
+    /// under the states that are not readings — No Work Assigned shows a Points total, and that
+    /// total has an age like any other.
+    @ViewBuilder
+    private var dataAgeLine: some View {
+        if let readAt = panel.dataReadAt {
+            Text(dataAge(readAt))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func dataAge(_ readAt: Date) -> String {
+        let calendar = Calendar.current
+        let day: String
+        if calendar.isDate(readAt, inSameDayAs: Date()) {
+            day = "today"
+        } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: Date()),
+                  calendar.isDate(readAt, inSameDayAs: yesterday) {
+            day = "yesterday"
+        } else {
+            day = "on \(Self.readDayFormatter.string(from: readAt))"
+        }
+        var line = "Data read \(day) at \(Self.readTimeFormatter.string(from: readAt))"
+        if case .cached = panel.source {
+            // The one sentence #12 exists for: this reading is old, and it is not broken.
+            line += " — the last read that got through"
+        }
+        return line + "."
     }
 
     @ViewBuilder
@@ -106,8 +168,10 @@ struct PanelView: View {
         case .nothing:
             // Static text, not a spinner: an indeterminate `ProgressView` loops, and the panel
             // ships with no motion at all (#9). In live mode this lasts from opening the window
-            // to the read arriving; in fixture mode, from launch to the first read.
-            Text(panel.liveBoardID == nil
+            // to the read arriving — and since #12 the cached read usually arrives first, so this
+            // line is what shows when there is nothing cached either. In fixture mode, from
+            // launch to the first read.
+            Text(panel.boardID == nil
                  ? "Reading the fixture"
                  : "Reading your Board")
                 .font(.caption)
@@ -117,7 +181,9 @@ struct PanelView: View {
 
     /// A read that failed, beside whatever was last read (#11). The sentence comes from the
     /// model — the panel holds no failure vocabulary of its own — and the previous reading stays
-    /// on screen above it, which is the difference between stale and broken. #12 adds its age.
+    /// on screen above it, which is the difference between stale and broken. #12 gave that reading
+    /// an age and a "Cached" caption: off the VPN this line is the *least* interesting thing on the
+    /// panel, because the numbers above it are still the ones the Operator came for.
     @ViewBuilder
     private func problemLine(_ message: String) -> some View {
         Text(message)
@@ -203,6 +269,25 @@ struct PanelView: View {
         return formatter
     }()
 
+    /// The day a cached read belongs to, for the age line. The year is spelled out because the
+    /// reading an Operator is trusting may predate the year they think they are in, and "on 3 Jan"
+    /// is the one sentence that could quietly be a year wrong.
+    private static let readDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter
+    }()
+
+    /// The hour and minute of the read, in the Operator's own clock — the age line's job is to be
+    /// compared against the moment they are looking at it, not against a UTC sprint date.
+    private static let readTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
     /// The corpus browser (#9): every state the instrument can reach is one click away. The
     /// entries are `FixtureScenario.allCases`, which `FixtureCorpusTests` pins to the corpus
     /// directories in both directions — a fixture the picker cannot load, or a picker entry
@@ -279,8 +364,10 @@ struct PanelView: View {
     /// rather than an implementation detail (#11).
     @ViewBuilder
     private var boardConfiguration: some View {
-        if let boardID = panel.liveBoardID {
-            Text("Reading Board \(boardID).")
+        if let boardID = panel.boardID {
+            // Configuration, not a claim about the last request: whether the reading on screen came
+            // off the Board just now or out of the cache is the caption's sentence to say (#12).
+            Text("Board \(boardID) configured.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
@@ -623,6 +710,8 @@ struct PanelView: View {
         case .twoActiveSprints: return "Two active sprints — the Board asks which one is tracked"
         case .severalAssignees: return "Several assignees — My Work forecast, the rest context"
         case .noWorkAssigned: return "No work assigned — the forecast has no subject"
+        case .cacheWithinWorkingDay: return "Cached — read earlier in the Working Day, the forecast stands"
+        case .cachePredatesWorkingDay: return "Cached — read on an earlier Working Day, Confidence withdrawn"
         }
     }
 
@@ -642,6 +731,8 @@ struct PanelView: View {
         let ruleClause = switch reading.rule {
         case .unmappedStatus:
             "Confidence withdraws: an Unmapped Status leaves its Issues outside every total."
+        case .dataPredatesWorkingDay:
+            "Confidence withdraws: this data was read before the current Working Day — the Points still stand, the comparison between them does not."
         case .nothingRemaining:
             "No Actionable or Waiting Points remain."
         case .nothingActionableRemaining:

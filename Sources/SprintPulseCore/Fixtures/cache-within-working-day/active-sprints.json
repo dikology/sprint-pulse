@@ -1,0 +1,22 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "total": 1,
+  "isLast": true,
+  "values": [
+    {
+      "self": "https://jira.example.com/rest/agile/1.0/sprint/5401",
+      "id": 5401,
+      "name": "Mobile Platform Sprint 41",
+      "state": "active",
+      "dateOffset": null,
+      "startDate": "2026-09-14T06:00:00.000+0000",
+      "endDate": "2026-09-25T15:00:00.000+0000",
+      "completeDate": null,
+      "activatedDate": "2026-09-14T06:02:05.000+0000",
+      "originBoardId": 172,
+      "goal": "The same sprint, read earlier in the same Working Day: the forecast stands.",
+      "avatarAliasId": null
+    }
+  ]
+}

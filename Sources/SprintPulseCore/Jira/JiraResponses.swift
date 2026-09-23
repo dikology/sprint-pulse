@@ -87,6 +87,28 @@ public struct JiraIssueFields: Decodable, Equatable, Sendable {
             ?? JiraDecoding.estimateFieldID
         estimate = try container.decodeIfPresent(Double.self, forKey: Key(fieldID))
     }
+
+    /// Rebuilding an already-decoded response, for the one thing that does it: the cache
+    /// (`CachedSprint`, #12), which stores what a read concluded and hands the same value back to
+    /// the domain later.
+    ///
+    /// Deliberately not `public`. A `Decodable` response shape has no business being constructed by
+    /// anything outside this module — that is what makes "these types are what Jira sent" true of
+    /// every value in the app, and why the panel's tests replay recorded envelopes through the real
+    /// decoder instead of building issues field by field.
+    init(
+        summary: String,
+        issueType: JiraIssueType,
+        status: JiraStatus,
+        assignee: JiraUser?,
+        estimate: Double?
+    ) {
+        self.summary = summary
+        self.issueType = issueType
+        self.status = status
+        self.assignee = assignee
+        self.estimate = estimate
+    }
 }
 
 /// A Jira issue type. Sub-tasks are detail belonging to their parent, never Issues, and are

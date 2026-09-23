@@ -1,0 +1,11 @@
+{
+  "sprintID": 5401,
+  "capturedAt": "2026-09-14T06:05:00Z",
+  "entries": [
+    { "key": "SEA-2201", "estimate": 12 },
+    { "key": "SEA-2202", "estimate": 3 },
+    { "key": "SEA-2205", "estimate": 13 },
+    { "key": "SEA-2206", "estimate": 3 },
+    { "key": "SEA-2208", "estimate": 5 }
+  ]
+}

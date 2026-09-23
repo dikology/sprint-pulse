@@ -120,9 +120,13 @@ The PAT is a single Keychain item. It is never logged and never written to the c
 A self-hosted instance usually means VPN, so unreachability is an ordinary condition, not an
 edge case.
 
-**Reads:** the cache displays indefinitely with a visible age. Once the data predates the
+**Reads:** the last successful response is cached with the timestamp of its fetch, and the cache is
+what the panel opens on — an unreachable Board leaves the cached sprint displaying rather than
+showing an error screen, its age and its "Cached" label both visible. Once the data predates the
 current Working Day, Confidence is forced to `Unknown` — stale point totals remain useful, but a
-stale burn rate is worse than none.
+stale burn rate is worse than none — while the Points, the Flow-State partition, and the Scope Delta
+stay on screen. A read that failed overwrites nothing. (The day, not the hour, is the unit:
+`docs/agents/glossary.md`, "The age of a read".)
 
 **Writes never queue.** By the time connectivity returns, the transition may be illegal, the
 issue may have moved, or someone else may have actioned it; replaying an intent formed against a

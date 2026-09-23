@@ -29,7 +29,8 @@ a scenario picker at the top lists every state the instrument can reach, each re
 that scenario pins for itself, so everything below is explorable by clicking before anything is
 authenticated. Configure a base URL, a Personal Access Token, and one Board and the panel reads
 that Board's live sprint instead — the same gateway protocol, the same forecast, no scenario
-picker until the credential goes away (#15 adds the switch back).
+picker until the credential goes away (#15 adds the switch back). When the Board cannot be reached
+the panel keeps showing the last read that got through, labelled as cached and dated (#12).
 
 The reading shows Points per Flow State for the Active Sprint's My Work: Actionable and Waiting as
 separate totals, Completed and Dropped as their own figures, a count of Unestimated Issues,
@@ -93,6 +94,23 @@ it met, and a resolved identity that matches no Issue at all is shown as **No Wo
 rather than as `Finished`. Two more things are configured once and remembered: the Board, typed
 by id because listing boards would be a fourth read, and the custom field carrying Estimates,
 which is per installation and decides whether any Points are found at all.
+
+The cache ([#12](https://github.com/dikology/sprint-pulse/issues/12)) is what makes an
+unreachable Board an ordinary evening rather than an error screen. The last read that got through
+is persisted beside the instant its data was taken, and the panel opens on it: the caption says
+which of the two is on screen — `Live — Board 172, as …` or `Cached — Board 172, as …` — and the
+age is spelled out under it, as a date and a time rather than a countdown, because nothing in this
+app re-times a sentence once it has been printed. How old the data is stays the domain's judgement:
+`readAt` enters `Forecast.evaluate`, which asks the `WorkingCalendar` whether the data predates the
+current Working Day, and that answer is rule 1's second trigger — the one the glossary has named
+since #6 and nothing could reach until there was a cache to go stale. When it fires, Confidence
+withdraws to `Unknown` with an Explanation of its own while the Points, the Flow-State partition,
+and the Scope Delta all stay on the panel: a stale burn rate is worse than none, stale Points are
+still informative. A read that failed overwrites nothing — the cache is written only past the point
+where both envelopes have decoded and the tracked sprint is resolved, so a truncated response leaves
+the good entry standing, and `CachedSprint` is the app's own JSON with no field a credential could
+be parked in. Two corpus scenarios carry the pair — same Board, same Issues, same observed moment,
+one `read-at.json` apart — so the withdrawn reading is reachable by clicking it.
 
 ## Licence
 

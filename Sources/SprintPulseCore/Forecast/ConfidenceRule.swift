@@ -7,14 +7,19 @@ import Foundation
 /// That is why `ConfidenceReading` stores the rule rather than storing the band state beside it:
 /// an Explanation is generated from the same fact the number was, so the two cannot disagree.
 ///
-/// # The stale-data trigger
-///
-/// Rule 1 has two triggers in the glossary: an Unmapped Status, and a cache that predates the
-/// current Working Day. Only the first is reachable in M0, which reads fixtures and has no cache
-/// to go stale. M1 adds the second, and with it either a case here or a payload on this one.
+/// Rule 1 is the exception to one-case-per-rule, and deliberately so: it has two triggers in
+/// `docs/agents/glossary.md` — an Unmapped Status, and data that predates the current Working
+/// Day — which answer the same state (`Unknown`) for two reasons the Operator can do two different
+/// things about. M0 could only reach the first; #12 added a cache that can go stale, and with it
+/// the second case, so the Reading says which one withdrew the forecast rather than leaving the
+/// panel to infer it from a timestamp.
 public enum ConfidenceRule: Sendable, Equatable {
     /// Rule 1 — an Issue of My Work sits in an Unmapped Status, so its Points are in no total.
     case unmappedStatus
+    /// Rule 1, its stale-data trigger (#12) — the data behind the reading was read before the
+    /// current Working Day. Every Points total still stands; the comparison between the rates is
+    /// no longer today's, and a stale burn rate is worse than none.
+    case dataPredatesWorkingDay
     /// Rule 2 — `A = 0` and `W = 0`: no Actionable and no Waiting Points remain.
     case nothingRemaining
     /// Rule 3 — `A = 0` and `W > 0`: nothing the Operator's own effort can move remains.
@@ -37,6 +42,7 @@ public enum ConfidenceRule: Sendable, Equatable {
     public var state: ConfidenceState {
         switch self {
         case .unmappedStatus: return .unknown
+        case .dataPredatesWorkingDay: return .unknown
         case .nothingRemaining: return .finished
         case .nothingActionableRemaining: return .handsOff
         case .insufficientHistory: return .unknown
@@ -63,14 +69,20 @@ extension ConfidenceRule {
     /// never before (`ConfidenceReading.evaluate`). That order is what lets an unsized Issue or a
     /// full review queue demote a Reading without ever suppressing one — an unmapped status still
     /// yields `Unknown` rather than a capped guess, and `Hands Off` is still `Hands Off`.
+    ///
+    /// Where rule 1's two triggers both hold, the Unmapped Status is the one the Reading names:
+    /// the status is the thing the Operator can go and map, and a stale cache resolves itself on
+    /// the next read that gets through.
     public static func evaluate(
         unmappedStatusPresent: Bool,
+        dataPredatesWorkingDay: Bool,
         actionablePoints: Double,
         waitingPoints: Double,
         requiredRate: Double?,
         demonstratedRate: Double?
     ) -> ConfidenceRule {
         if unmappedStatusPresent { return .unmappedStatus }                            // Rule 1
+        if dataPredatesWorkingDay { return .dataPredatesWorkingDay }                   // Rule 1
         if actionablePoints == 0 && waitingPoints == 0 { return .nothingRemaining }    // Rule 2
         if actionablePoints == 0 && waitingPoints > 0 { return .nothingActionableRemaining }  // Rule 3
         guard let demonstratedRate else { return .insufficientHistory }                // Rule 4

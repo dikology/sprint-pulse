@@ -15,10 +15,11 @@ import XCTest
 /// These cases decide live-versus-fixture by asking the Keychain whether a credential exists, so
 /// they go through the real item — the same seam #10 tested, and no Jira credential is involved
 /// either way. On a machine where the Keychain refuses to work, `skipUnlessKeychainWorks` stands
-/// the lot down; that silence covers #11's ACs 4, 5, 7 and 8 (the Board remembered, the sprint
-/// named, the fetch bound, the empty subject), so a green run here means the Keychain answered.
-/// The gateway, the paging, the decoding and the forecast are all covered without it, in
-/// `SprintPulseCoreTests`.
+/// the lot down; that silence covers #11's ACs 4, 5, 7 and 8 and #12's 1, 2, 3, 4, 6, 7, 8 and 9
+/// (the Board remembered, the sprint named, the fetch bound, the empty subject; the read cached,
+/// the cached read displayed instead of an error screen, its age named, and the credential kept out
+/// of it), so a green run here means the Keychain answered. The gateway, the paging, the decoding
+/// and the forecast are all covered without it, in `SprintPulseCoreTests`.
 @MainActor
 final class PanelModelTests: XCTestCase {
     let identity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
@@ -31,6 +32,11 @@ final class PanelModelTests: XCTestCase {
     private var defaults: UserDefaults!
     private var settings: JiraSettingsStore { JiraSettingsStore(defaults: defaults) }
     private var baselines: BaselineStore { BaselineStore(defaults: defaults) }
+    /// The cache slot under test, in the same throwaway domain as the preferences. Every
+    /// `PanelModel` built here is handed this store explicitly: left to its default the panel
+    /// would write the Operator's real `UserDefaults` from a test run, and one test's cached read
+    /// would arrive in the next (#12).
+    private var cache: SprintCacheStore { SprintCacheStore(defaults: defaults) }
 
     override func setUpWithError() throws {
         defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -252,7 +258,7 @@ final class PanelModelTests: XCTestCase {
             gateway: JSONGateway(sprints: oneSprint, issues: myWork, error: nil)
         )
         let model = PanelModel(
-            settings: settings, credentials: credentials, baselineStore: baselines,
+            settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
             liveGateway: { _, _ in box.gateway }
         )
         await model.windowDidAppear()
@@ -269,7 +275,7 @@ final class PanelModelTests: XCTestCase {
     func test_firstFetchFailing_showsTheFailureRatherThanAnEmptyReading() async throws {
         try configureLive()
         let model = PanelModel(
-            settings: settings, credentials: credentials, baselineStore: baselines,
+            settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
             liveGateway: { _, _ in
                 JSONGateway(sprints: "", issues: "", error: .credentialRejected)
             }
@@ -365,7 +371,7 @@ final class PanelModelTests: XCTestCase {
         await model.refresh()
 
         XCTAssertEqual(model.source, .fixture(model.scenario))
-        XCTAssertNil(model.liveBoardID, "nothing on screen may still claim to be Live")
+        XCTAssertNil(model.boardID, "nothing on screen may still claim to be a Board read")
         XCTAssertNotNil(model.instrument, "the fixture reading replaces the revoked one")
     }
 
@@ -376,7 +382,7 @@ final class PanelModelTests: XCTestCase {
         struct Unnamed: Error {}
         try configureLive()
         let model = PanelModel(
-            settings: settings, credentials: credentials, baselineStore: baselines,
+            settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
             liveGateway: { _, _ in throw Unnamed() }
         )
 
@@ -388,6 +394,262 @@ final class PanelModelTests: XCTestCase {
         XCTAssertFalse(problem.contains(token))
     }
 
+    // MARK: - The cache that admits its age (#12)
+
+    /// AC 1: the last successful response is cached, with the timestamp of its fetch.
+    func test_successfulLiveRead_isCachedWithTheMomentItWasTaken() async throws {
+        try configureLive()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+
+        await model.windowDidAppear()
+
+        let cached = try XCTUnwrap(cache.load(), "a read that succeeded is a read worth keeping")
+        XCTAssertEqual(cached.boardID, boardID, "and it knows whose Board it came from (#11's scoping)")
+        XCTAssertEqual(cached.sprint.name, "Live Sprint 1")
+        XCTAssertEqual(cached.issues.count, 3, "the whole sprint read: another assignee's 13 Points included")
+        XCTAssertEqual(cached.snapshot.myWork(assignedTo: identity).map(\.key), ["L-1", "L-2"])
+        XCTAssertEqual(cached.readAt, model.dataReadAt, "the age on the panel and the age in the slot are one number")
+        XCTAssertLessThan(abs(cached.readAt.timeIntervalSinceNow), 60, "the moment of the fetch, not of the launch")
+    }
+
+    /// AC 2, the condition this milestone was scoped around: relaunch off the VPN and the panel
+    /// shows the cached sprint instead of an error screen. AC 4 is the caption's `cached`; AC 3 is
+    /// the instant below, which is the one number the panel's age line is built from.
+    func test_relaunchWithJiraUnreachable_showsTheCachedSprintNotAnErrorScreen() async throws {
+        try configureLive()
+        let online = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await online.windowDidAppear()
+        let readAt = try XCTUnwrap(cache.load()).readAt
+
+        let offline = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await offline.windowDidAppear()
+
+        let instrument = try XCTUnwrap(offline.instrument, "the cached sprint keeps displaying")
+        XCTAssertEqual(instrument.sprintName, "Live Sprint 1")
+        XCTAssertEqual(instrument.actionablePoints, 5)
+        XCTAssertEqual(instrument.completedPoints, 8)
+        XCTAssertEqual(instrument.liveSprintPoints, 26)
+        XCTAssertNotEqual(instrument.reading.rule, .dataPredatesWorkingDay, "read today, judged today")
+        XCTAssertFalse(instrument.predatesCurrentWorkingDay)
+        XCTAssertEqual(offline.source, .cached(boardID: boardID), "…and the panel says where it came from")
+        XCTAssertEqual(offline.dataReadAt, readAt)
+        XCTAssertEqual(
+            offline.readProblem,
+            JiraClientError.unreachableHost(host: "jira.example.com").message,
+            "the failure is still named — beside the reading, not instead of it"
+        )
+    }
+
+    /// AC 6 and AC 7 at the app's own seam: an entry that predates the current Working Day comes
+    /// back `Unknown` with every total still on screen. The rule itself is the domain's, and
+    /// `ForecastTests` pins its arithmetic; what is checked here is that a read served out of the
+    /// drawer is judged against *now* rather than against the moment it was put in.
+    func test_agedCacheEntry_withdrawsConfidenceAndKeepsTheTotals() async throws {
+        try configureLive()
+        let online = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await online.windowDidAppear()
+        let read = try XCTUnwrap(cache.load())
+
+        // Re-age the entry by hand: this is what a night spent off the VPN does by itself.
+        cache.save(
+            CachedSprint(
+                boardID: read.boardID,
+                readAt: read.readAt.addingTimeInterval(-3 * 24 * 60 * 60),
+                snapshot: read.snapshot
+            )
+        )
+
+        let offline = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await offline.windowDidAppear()
+
+        let instrument = try XCTUnwrap(offline.instrument)
+        XCTAssertTrue(instrument.predatesCurrentWorkingDay)
+        XCTAssertEqual(instrument.reading.rule, .dataPredatesWorkingDay)
+        XCTAssertEqual(instrument.confidenceState, .unknown, "the forecast withdraws…")
+        XCTAssertEqual(instrument.actionablePoints, 5, "…and the Points do not")
+        XCTAssertEqual(instrument.points(.done), 8)
+        XCTAssertEqual(instrument.droppedPoints, 0)
+        XCTAssertEqual(instrument.liveSprintPoints, 26)
+        XCTAssertEqual(instrument.scopeDelta, 0, "still on screen, still the sprint's own shape")
+        XCTAssertEqual(offline.menuBarLabel, "▲ 5", "and the menu bar keeps the number it can still stand behind")
+        XCTAssertNotNil(offline.readProblem)
+    }
+
+    /// AC 8 and AC 10's third case: a response that arrives broken leaves the good entry exactly as
+    /// it was. A truncated body rather than a thrown error, because "a malformed or truncated
+    /// response" is the wording under test — the decode has to be the thing that refuses it.
+    func test_truncatedResponse_leavesTheCachedReadIntact() async throws {
+        try configureLive()
+        let good = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await good.windowDidAppear()
+        let before = try XCTUnwrap(cache.load())
+
+        let broken = makeModel(
+            reading: Reading(sprints: "{ \"maxResults\": 50, \"startAt\": 0, \"isL", issues: ""),
+            into: Reads()
+        )
+        await broken.windowDidAppear()
+
+        XCTAssertEqual(cache.load(), before, "a read that could not be decoded writes nothing")
+        XCTAssertEqual(try XCTUnwrap(broken.instrument).sprintName, "Live Sprint 1")
+        XCTAssertFalse(
+            try XCTUnwrap(broken.readProblem).contains(token),
+            "and whatever the decoder said, it did not say the credential"
+        )
+    }
+
+    /// AC 9, at the seam where a credential is actually in play: one full live read authenticated
+    /// with the sentinel token, then the whole preferences domain swept — the cache slot, the
+    /// Baseline slot, and everything else the app wrote along the way. This is #10's sweep over the
+    /// drawer #12 adds to it.
+    func test_liveReadNeverWritesTheCredentialAnywhereTheAppStores() async throws {
+        try configureLive()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await model.windowDidAppear()
+
+        XCTAssertNotNil(cache.storedBytes(), "the read was cached, so this sweeps a full drawer")
+        for (key, value) in defaults.dictionaryRepresentation()
+        where key.hasPrefix("sprint-") || key.hasPrefix("jira-") {
+            XCTAssertFalse(
+                String(describing: value).contains(token),
+                "\(key) holds the credential — the token's only resting place is the Keychain (#10)"
+            )
+        }
+    }
+
+    /// The cached read belongs to the Board it was taken from. Shown under another Board's name it
+    /// would be a wrong number wearing a right face — the same reasoning that scopes the
+    /// tracked-sprint answer to its Board (#11), applied to the drawer.
+    func test_aCachedReadOfAnotherBoard_isNotShownUnderThisBoardsName() async throws {
+        try configureLive()
+        let online = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await online.windowDidAppear()
+        let read = try XCTUnwrap(cache.load())
+        cache.save(
+            CachedSprint(boardID: read.boardID + 1, readAt: read.readAt, snapshot: read.snapshot)
+        )
+
+        let offline = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await offline.windowDidAppear()
+
+        XCTAssertEqual(offline.content, .nothing, "somebody else's sprint is not this Board's answer")
+        XCTAssertEqual(offline.source, .live(boardID: boardID), "nothing is on screen to call cached")
+        XCTAssertNil(offline.dataReadAt, "and there is no read to date")
+        XCTAssertNotNil(offline.readProblem)
+    }
+
+    /// AC 2's other half, and the reason the cache is read *before* the request rather than only
+    /// after it fails: off the VPN a fetch can spend its whole timeout discovering that there is
+    /// nothing to reach, and the Operator who opened the panel came for the answer. A gateway that
+    /// answers when the test says so, so "still in flight" is a fact this test holds rather than a
+    /// race it hopes to win.
+    func test_windowOpenShowsTheCachedReadWhileTheFetchIsStillInFlight() async throws {
+        try configureLive()
+        let online = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await online.windowDidAppear()
+
+        let gate = ReleaseGate()
+        let sprints = oneSprint, issues = myWork
+        let opening = PanelModel(
+            settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            liveGateway: { _, _ in GatedGateway(sprints: sprints, issues: issues, gate: gate) }
+        )
+        let window = Task { await opening.windowDidAppear() }
+
+        await waitUntil { opening.instrument != nil }
+        XCTAssertEqual(opening.source, .cached(boardID: boardID), "the cache is what is on screen so far")
+        XCTAssertNil(opening.readProblem, "and nothing has failed yet — there is simply no newer answer")
+
+        await gate.release()
+        await window.value
+        XCTAssertEqual(opening.source, .live(boardID: boardID), "the fetch that arrives replaces it, and says it arrived")
+        XCTAssertEqual(opening.dataReadAt, cache.load()?.readAt, "…and becomes the read the drawer holds")
+    }
+
+    /// A fixture reading still on screen when a credential is configured is not that Board's cached
+    /// read, and must not be given its caption, its age line, or its #11 protection. The bundled
+    /// scenario's Points belong to a sprint nobody on the Board is tracking; showing them under
+    /// "Cached — Board N" would be the wrong-number-wearing-a-right-face failure #12 exists to
+    /// refuse, reached here by sequence rather than by mistake.
+    func test_aFixtureReadingIsNeverRebrandedAsTheBoardsCachedRead() async throws {
+        let box = GatewayBox(
+            gateway: JSONGateway(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com"))
+        )
+        let model = PanelModel(
+            settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            liveGateway: { _, _ in box.gateway }
+        )
+
+        // No credential yet, so the panel reads the corpus and there is a reading on screen.
+        await waitUntil { model.instrument != nil }
+        XCTAssertEqual(model.source, .fixture(model.scenario))
+        XCTAssertNil(model.dataBoardID, "a fixture read was never a Board's read")
+        XCTAssertEqual(try XCTUnwrap(model.instrument).sprintName, "Mobile Platform Sprint 34")
+
+        try configureLive()  // the connection arrives; the Board cannot be reached
+        await model.refresh()
+
+        XCTAssertNotEqual(model.source, .fixture(model.scenario), "the panel is reading a Board now")
+        XCTAssertEqual(model.content, .nothing, "and it has nothing of that Board's to show")
+        XCTAssertNil(model.dataReadAt, "so there is no age to state beside it")
+        XCTAssertNil(model.instrument, "the scenario's sprint is gone, not re-labelled")
+        XCTAssertEqual(model.readProblem, JiraClientError.unreachableHost(host: "jira.example.com").message)
+    }
+
+    /// A second Board is a second reading. Whatever came off the first one is neither dated nor
+    /// captioned as the second's, which is #11's scoping of the tracked-sprint answer applied to the
+    /// panel's own contents: the cache holds one Board's read, and the id beside it is what makes
+    /// that checkable rather than assumed.
+    func test_switchingBoardDoesNotCarryTheOldBoardsReadingAcross() async throws {
+        try configureLive()
+        let first = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await first.windowDidAppear()
+        XCTAssertEqual(first.dataBoardID, boardID)
+
+        settings.boardID = boardID + 1
+        let second = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await second.windowDidAppear()
+        // The gateway answers with the same sprint either way; what is checked is that the panel
+        // never presents the previous Board's numbers as this one's cached read.
+        XCTAssertEqual(second.source, .live(boardID: boardID + 1))
+        XCTAssertEqual(second.dataBoardID, boardID + 1, "its own read, from its own fetch")
+        XCTAssertEqual(cache.load()?.boardID, boardID + 1, "and the drawer holds this Board's read now")
+        XCTAssertEqual(second.dataReadAt, cache.load()?.readAt)
+    }
+
+    /// Browsing the corpus must cost the Operator neither their Baseline (#14's test) nor their
+    /// cached read: a fixture is somebody else's sprint, so it has no business in the drawer. It
+    /// also has no fetch to date, so the age line stays off.
+    func test_fixtureReads_neverWriteTheCacheAndNeverClaimAnAge() async throws {
+        try configureLive()
+        let live = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        await live.windowDidAppear()
+        let stored = try XCTUnwrap(cache.load())
+
+        try credentials.delete()  // back to fixtures, same preferences and same drawer
+        let browsing = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        browsing.scenario = .capBoth
+        await waitUntil { browsing.instrument != nil }
+        // The corpus's own stale scenario, clicked: the withdrawn reading is reachable by asking,
+        // which is the whole of #9's rule about states.
+        browsing.scenario = .cachePredatesWorkingDay
+        await waitUntil { browsing.instrument?.confidenceState == .unknown }
+
+        let instrument = try XCTUnwrap(browsing.instrument)
+        XCTAssertTrue(instrument.predatesCurrentWorkingDay, "read on Friday, observed on Monday")
+        XCTAssertNil(browsing.dataReadAt, "and a fixture is not a fetch")
+        XCTAssertEqual(cache.load(), stored, "the corpus left the cached read alone")
+    }
+
     // MARK: - Helpers
 
     private func makeModel(reading: Reading, into reads: Reads) -> PanelModel {
@@ -395,6 +657,7 @@ final class PanelModelTests: XCTestCase {
             settings: settings,
             credentials: credentials,
             baselineStore: baselines,
+            cache: cache,
             liveGateway: { configuration, token in
                 reads.record(configuration: configuration, token: token)
                 return JSONGateway(
@@ -553,5 +816,44 @@ private extension PanelModel.Content {
     var sprintCandidates: [JiraSprint]? {
         if case .namingActiveSprint(let candidates) = self { return candidates }
         return nil
+    }
+}
+
+/// A gateway that answers when the test says so, so "this fetch is still in flight" is something
+/// the test holds rather than a timing margin it hopes to win (#12).
+private actor ReleaseGate {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var open = false
+
+    func wait() async {
+        if open { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        open = true
+        for waiter in waiters { waiter.resume() }
+        waiters = []
+    }
+}
+
+/// `JSONGateway` behind that gate: the same recorded envelopes, held back until released.
+private struct GatedGateway: JiraGateway {
+    let sprints: String
+    let issues: String
+    let gate: ReleaseGate
+
+    func activeSprints() async throws -> JiraSprintsResponse {
+        await gate.wait()
+        return try JiraDecoding.decoder().decode(
+            JiraSprintsResponse.self, from: Data(sprints.utf8)
+        )
+    }
+
+    func issues(inSprint sprintID: Int) async throws -> JiraSprintIssuesResponse {
+        await gate.wait()
+        return try JiraDecoding.decoder().decode(
+            JiraSprintIssuesResponse.self, from: Data(issues.utf8)
+        )
     }
 }

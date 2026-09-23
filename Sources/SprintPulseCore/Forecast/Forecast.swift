@@ -1,12 +1,12 @@
 import Foundation
 
 /// The domain's entry point: a pure transformation of
-/// `(gateway response, Status Map, stored Sprint Baseline, now)` into
+/// `(gateway response, Status Map, stored Sprint Baseline, readAt, now)` into
 /// `(Instrument, updated Sprint Baseline)`.
 ///
-/// No I/O happens here and there is no store protocol — the app reads and writes the baseline
-/// and supplies the Status Map and the Working Calendar, the domain only computes. The current
-/// date is an argument so tests can pin "today".
+/// No I/O happens here and there is no store protocol — the app reads and writes the baseline and
+/// the cache and supplies the Status Map and the Working Calendar, the domain only computes. Both
+/// the current date and the moment the data was read are arguments, so tests can pin either.
 ///
 /// #4 partitions My Work by Flow State through the Status Map. #5 adds Working Days Remaining
 /// through the `WorkingCalendar`. #6 adds the rates and the Confidence State. #7 adds the Caps
@@ -18,13 +18,48 @@ import Foundation
 /// for byte. My Work itself moved out to `SprintSnapshot.myWork(assignedTo:)` in that ticket —
 /// not because the forecast changed, but because the app has to ask the same question the
 /// forecast asks in order to know whether there is anything to forecast.
+///
+/// #12 is the one place M1 touches the table, and only by reaching a rule M0 could not express:
+/// `docs/agents/glossary.md` has always named two triggers for rule 1, and the second — data read
+/// before the current Working Day — needed a cache to exist before it could fire. It arrives as an
+/// argument, not as a re-derivation: rules 2–9, their order, and the Caps are untouched, and every
+/// M0 call site keeps using the entry point below, which says what every M0 test already meant —
+/// that the data was read at the moment it was evaluated.
 public enum Forecast {
+    /// A read evaluated at the moment it was taken: the fresh case, and the whole of what M0 ever
+    /// had. A fixture is a frozen observation *at* its pinned instant, so reading it at `now` is
+    /// the honest answer rather than a default.
     public static func evaluate(
         snapshot: SprintSnapshot,
         identity: OperatorIdentity,
         statusMap: StatusMap,
         workingCalendar: WorkingCalendar,
         baseline: SprintBaseline?,
+        now: Date
+    ) -> (instrument: Instrument, baseline: SprintBaseline) {
+        evaluate(
+            snapshot: snapshot,
+            identity: identity,
+            statusMap: statusMap,
+            workingCalendar: workingCalendar,
+            baseline: baseline,
+            readAt: now,
+            now: now
+        )
+    }
+
+    /// The full entry point. `readAt` is the moment the data behind `snapshot` was taken; `now`
+    /// is the moment the reading is judged at. When the two fall in different Working Days the
+    /// forecast withdraws to `Unknown` (rule 1) while every Points total, Flow-State figure, and
+    /// Scope Delta stays computed and visible — stale Points are still informative, a stale burn
+    /// rate is worse than none (#12).
+    public static func evaluate(
+        snapshot: SprintSnapshot,
+        identity: OperatorIdentity,
+        statusMap: StatusMap,
+        workingCalendar: WorkingCalendar,
+        baseline: SprintBaseline?,
+        readAt: Date,
         now: Date
     ) -> (instrument: Instrument, baseline: SprintBaseline) {
 
@@ -94,8 +129,19 @@ public enum Forecast {
             ? completedPoints / Double(workingDaysElapsed)
             : nil
 
+        // Rule 1's stale-data trigger (#12), judged here rather than by whoever renders the
+        // result: the question is whether the data predates the Working Day the reading is being
+        // evaluated in, which only the domain has both moments and a Working Calendar to answer.
+        // Nothing below withdraws because of it except rule 1 — the Points, the Flow-State
+        // partition, and the Scope Delta are all still computed, because stale Points are still
+        // informative.
+        let predatesCurrentWorkingDay = workingCalendar.predatesCurrentWorkingDay(
+            readAt: readAt, now: now
+        )
+
         let reading = ConfidenceReading.evaluate(
             unmappedStatusPresent: !unmapped.isEmpty,
+            dataPredatesWorkingDay: predatesCurrentWorkingDay,
             actionablePoints: actionablePoints,
             waitingPoints: waitingPoints,
             requiredRate: requiredRate,
@@ -108,10 +154,13 @@ public enum Forecast {
             // Already observed this sprint as active — the baseline is fixed.
             updatedBaseline = baseline
         } else {
-            // First observation of this sprint: snapshot the whole sprint's Issues.
+            // First observation of this sprint: snapshot the whole sprint's Issues. `capturedAt`
+            // is the moment the data was read, not the moment it happened to be evaluated — the
+            // Baseline records when the sprint looked like this, and a cached first read means it
+            // looked like this then (#12).
             updatedBaseline = SprintBaseline(
                 sprintID: snapshot.sprint.id,
-                capturedAt: now,
+                capturedAt: readAt,
                 entries: issues.map { SprintBaseline.Entry(key: $0.key, estimate: $0.fields.estimate) }
             )
         }
@@ -137,7 +186,9 @@ public enum Forecast {
             demonstratedRate: demonstratedRate,
             reading: reading,
             liveSprintPoints: liveSprintPoints,
-            baselinePoints: baselinePoints
+            baselinePoints: baselinePoints,
+            readAt: readAt,
+            predatesCurrentWorkingDay: predatesCurrentWorkingDay
         )
 
         return (instrument, updatedBaseline)

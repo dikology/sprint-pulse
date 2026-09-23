@@ -14,8 +14,8 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 }
 
 /// Owns the platform concerns the domain must not: reaching the gateway (a bundled scenario on
-/// disk, or one Board over HTTP), persisting the Sprint Baseline, and supplying "now". It calls
-/// `Forecast.evaluate` and publishes the result for the panel to render.
+/// disk, or one Board over HTTP), persisting the Sprint Baseline and the last successful read, and
+/// supplying "now". It calls `Forecast.evaluate` and publishes the result for the panel to render.
 ///
 /// Two sources, one protocol (#11): `FixtureJiraGateway` and `LiveJiraGateway` satisfy the same
 /// `JiraGateway`, so everything below the gateway is the same code path producing the same
@@ -26,6 +26,13 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 /// credential resolved or revoked. There is no timer and no polling anywhere in the app, and no
 /// live read at launch. A fixture read issues no request at all, which is why the picker can keep
 /// loading on click.
+///
+/// What a read leaves on screen when it fails (#12): the last read that succeeded, with its age
+/// against it. Being off the VPN is this milestone's ordinary condition, so the cache is not a
+/// fallback for a broken app — it is what the panel shows, and the withdrawal to it is the reason
+/// the panel is worth opening offline. Nothing here decides how old that reading is: the cache
+/// carries the instant it was taken and `Forecast` judges it against `now`, which is rule 1 of the
+/// evaluation order rather than a caption (#2's boundary, still holding).
 @MainActor
 final class PanelModel: ObservableObject {
     /// Where the panel's reading comes from, for the caption and for what a read is allowed to do.
@@ -33,8 +40,12 @@ final class PanelModel: ObservableObject {
         /// The bundled corpus, chosen by the picker. The reading whenever the app has no complete
         /// live configuration (#10, #11).
         case fixture(FixtureScenario)
-        /// One Board, over HTTP.
+        /// One Board, over HTTP — and the fetch that just filled this in succeeded.
         case live(boardID: Int)
+        /// The same Board, but the reading on screen is the last one that got through, not the
+        /// result of this read (#12). Refresh still belongs on the panel: the Operator is looking
+        /// at a Board, and asking it again is the thing to do about an old answer.
+        case cached(boardID: Int)
     }
 
     /// What the panel renders below the sprint name. One case per condition the Operator can
@@ -86,6 +97,21 @@ final class PanelModel: ObservableObject {
     @Published private(set) var source: Source = .fixture(.walkingSkeleton)
     @Published private(set) var content: Content = .nothing
 
+    /// The moment the data behind whatever is on screen was read, and which Board it was read from
+    /// — `nil` and `nil` together when nothing on screen came from a fetch at all. The panel's age
+    /// line has one source, and it is not the wall clock: a reading stays on screen for as long as
+    /// the window is open, and a caption computed from "now minus then" would have to be re-timed
+    /// to stay true — which this app never does, having no timer anywhere in it (#11). So the
+    /// instant is carried and the view words it (#12's AC 3: the age is always visible).
+    ///
+    /// Both together answer one question — *where is this reading from* — and it is the question
+    /// `source` cannot answer alone: a Board's cached read is that Board's, and neither the age line
+    /// nor a "Cached — Board N" caption may be attached to a reading fetched from somewhere else. A
+    /// fixture read leaves them `nil`, because a bundled scenario is not a fetch; the moment it
+    /// pins for itself (#9) still reaches the reading as `Instrument.readAt`.
+    @Published private(set) var dataReadAt: Date?
+    @Published private(set) var dataBoardID: Int?
+
     /// The panel's line for a read that failed, held apart from `content` so a failure leaves the
     /// previous reading on screen: stale, not broken (#11), and #12 puts an age beside it.
     @Published private(set) var readProblem: String?
@@ -98,6 +124,9 @@ final class PanelModel: ObservableObject {
     private let settings: JiraSettingsStore
     private let credentials: JiraCredentialStore
     private let baselineStore: BaselineStore
+    /// The last read that succeeded, so a Board that is unreachable tonight is not a panel with
+    /// nothing on it (#12).
+    private let cache: SprintCacheStore
 
     /// The answer to the active-sprint prompt while the panel is reading the corpus. Held in
     /// memory only: a fixture's sprint id is nobody's configuration, and persisting it would let
@@ -120,16 +149,20 @@ final class PanelModel: ObservableObject {
         settings: JiraSettingsStore = JiraSettingsStore(),
         credentials: JiraCredentialStore = JiraCredentialStore(),
         baselineStore: BaselineStore = BaselineStore(),
+        cache: SprintCacheStore = SprintCacheStore(),
         liveGateway: @escaping LiveGatewayFactory = PanelModel.liveGateway
     ) {
         self.settings = settings
         self.credentials = credentials
         self.baselineStore = baselineStore
+        self.cache = cache
         self.liveGateway = liveGateway
 
         if let configuration = liveConfiguration {
             // A live Board is not read at launch: the first fetch waits for the window to open
-            // (#11). Fixtures are read at launch so the menu-bar item carries the number without
+            // (#11). Nothing is read from the cache at launch either — the cache is what the panel
+            // shows *when* the window opens, before the fetch has had a chance to fail (#12).
+            // Fixtures are read at launch so the menu-bar item carries the number without
             // a click — a bundled file is not a request.
             source = .live(boardID: configuration.boardID)
         } else {
@@ -154,17 +187,29 @@ final class PanelModel: ObservableObject {
     /// The menu-bar item's spoken form: the marker is decorative and a bare number is not a
     /// sentence, so VoiceOver is given the figure in words — the instrument's entry point
     /// must be as legible as its panel (#9).
+    ///
+    /// Neither form carries the age (#12), and that is a decision rather than an omission: what the
+    /// bar shows is Points remaining, which is exactly the figure AC 7 keeps on screen when data
+    /// goes stale because it stays true of the sprint whenever it was counted. The thing that
+    /// withdraws is Confidence, which the bar never claimed. Where a reading came from and when it
+    /// was taken are the panel's to say, and the panel is one click away by design.
     var menuBarAccessibilityLabel: String {
         guard let instrument else { return "Sprint Pulse" }
         return "Sprint Pulse, \(Self.formatted(instrument.pointsRemaining)) Points remaining"
     }
 
-    /// The Board being read, or `nil` when the panel is reading the corpus. One branch on
-    /// `source` for everything the two readings do differently — the caption, the fixture picker,
-    /// the Refresh control — so the view never asks the same question three times (#11).
-    var liveBoardID: Int? {
-        if case .live(let boardID) = source { return boardID }
-        return nil
+    /// The Board the reading belongs to, whether it arrived from the fetch that just ran or from
+    /// the one that last got through; `nil` while the panel is reading the corpus.
+    ///
+    /// One branch on `source` for everything the two connections do differently — the caption, the
+    /// fixture picker, the Refresh control — so the view never asks the same question three times
+    /// (#11). A cached read answers it the same way: it is still that Board's read, and asking the
+    /// Board again is still what Refresh is for (#12).
+    var boardID: Int? {
+        switch source {
+        case .fixture: return nil
+        case .live(let boardID), .cached(let boardID): return boardID
+        }
     }
 
     /// The Active Sprint the Operator named when the Board reported several, for the prompt's
@@ -206,7 +251,8 @@ final class PanelModel: ObservableObject {
         ((try? credentials.countStoredItems()) ?? 0) > 0
     }
 
-    /// The panel window appeared: the first of the moments a live read happens (#11).
+    /// The panel window appeared: the first of the moments a live read happens (#11). A fixture
+    /// panel is not re-read for it — the reading is already on screen and no request is waiting.
     func windowDidAppear() async {
         guard liveConfiguration != nil else { return }
         await load()
@@ -234,12 +280,21 @@ final class PanelModel: ObservableObject {
 
     /// Reads the configured source. Both branches go through the same gateway protocol, the same
     /// snapshot resolution, and the same `Forecast.evaluate`.
+    ///
+    /// A live read *begins* with the cached one (#12), before the request is made: off the VPN a
+    /// fetch can spend its whole timeout discovering that there is nothing to reach, and the
+    /// Operator who opened the panel came for the answer rather than for the news about the
+    /// connection. What the request then does is replace it — or leave it standing, with the
+    /// failure named beside it. `loadLive` claims `.live` for itself once the Board has answered,
+    /// so the caption never says "Live" over a reading the fetch has not produced yet.
     func load() async {
         if let configuration = liveConfiguration {
-            source = .live(boardID: configuration.boardID)
+            showCachedRead(of: configuration)
             await read { try await self.loadLive(configuration) }
         } else {
             source = .fixture(scenario)
+            dataReadAt = nil
+            dataBoardID = nil
             await read { try await self.loadFixture() }
         }
     }
@@ -248,7 +303,10 @@ final class PanelModel: ObservableObject {
 
     /// One read's worth of work, with the failure rule wrapped around it: a throw names what
     /// failed and leaves `content` standing, which is the difference between stale and broken
-    /// (#11). Both sources come through here so neither can invent its own error handling.
+    /// (#11). What is standing when a live read fails is by then the cached read — `load` put it
+    /// there before asking — so the failure adds a sentence and takes nothing away.
+    ///
+    /// Both sources come through here so neither can invent its own error handling.
     private func read(_ fetch: @MainActor () async throws -> Void) async {
         do {
             try await fetch()
@@ -284,6 +342,13 @@ final class PanelModel: ObservableObject {
         // from another sprint re-captures on mismatch, which is `Forecast`'s existing rule.
         let stored = try FixtureJiraGateway.bundledBaseline(scenario) ?? baselineStore.load()
 
+        // A scenario that is about the cache (#12) carries the moment its own data was taken beside
+        // the moment it is observed at, which is the only thing separating the corpus's two
+        // cached-read scenarios. Every other scenario is a fresh observation, where the two
+        // instants are the same one — and neither is ever the wall clock, which is what lets the
+        // picker promise a state and produce it on any machine, on any day.
+        let readAt = try FixtureJiraGateway.bundledReadAt(scenario) ?? moment
+
         apply(
             Forecast.evaluate(
                 snapshot: snapshot,
@@ -291,6 +356,7 @@ final class PanelModel: ObservableObject {
                 statusMap: statusMap,
                 workingCalendar: workingCalendar,
                 baseline: stored,
+                readAt: readAt,
                 now: moment
             ),
             snapshot: snapshot,
@@ -310,19 +376,35 @@ final class PanelModel: ObservableObject {
             throw JiraClientError.missingToken
         }
         let gateway = try await liveGateway(configuration, token)
-        guard let snapshot = try await snapshot(
+        let fetched = try await snapshot(
             from: gateway, chosenSprintID: settings.trackedSprintID
-        ) else {
-            // The Board reported two active sprints awaiting a name, or none active at all:
-            // `snapshot` has already published the state that says so (#11). Both replace what
-            // is on screen — they are about the Board having changed, not about a read that
-            // failed.
+        )
+        // The Board answered, so anything now on screen came out of this fetch and the caption may
+        // say "Live" again (#11, #12).
+        source = .live(boardID: configuration.boardID)
+        dataBoardID = configuration.boardID
+        guard let snapshot = fetched else {
+            // Two active sprints awaiting a name, or none active at all: `snapshot` has already
+            // published the state that says so (#11). Both replace what is on screen — they are
+            // about the Board having changed, not about a read that failed.
+            dataReadAt = Date()
             return
         }
 
-        // A live read is read at the moment it is taken. `now` is an argument to the domain
-        // either way (#2); only the fixture corpus pins one, because only a fixture is a frozen
-        // observation.
+        // One instant for the moment the data arrived and the moment it is judged at: a live read
+        // is fresh by definition, and `readAt` is the timestamp the cache persists (AC 1) and the
+        // panel ages against (AC 3). `now` stays an argument to the domain either way (#2); only a
+        // fixture pins one, because only a fixture is a frozen observation.
+        let readAt = Date()
+        dataReadAt = readAt
+
+        // The only place the cache is written, and it sits past the point where anything could have
+        // thrown: both envelopes decoded, every page of both listings arrived, the tracked sprint
+        // resolved. A refused Board, a truncated page, and a response that is not a response leave
+        // the last good read exactly as it was (AC 8) — which is the read already on screen, since
+        // `showCachedRead` put it there before this request was made.
+        cache.save(CachedSprint(boardID: configuration.boardID, readAt: readAt, snapshot: snapshot))
+
         apply(
             Forecast.evaluate(
                 snapshot: snapshot,
@@ -330,11 +412,77 @@ final class PanelModel: ObservableObject {
                 statusMap: statusMap,
                 workingCalendar: workingCalendar,
                 baseline: baselineStore.load(),
-                now: Date()
+                readAt: readAt,
+                now: readAt
             ),
             snapshot: snapshot,
             persistingBaseline: true
         )
+    }
+
+    // MARK: - The cached read (#12)
+
+    /// This Board's last successful read, put on screen before its request is made and labelled
+    /// for what it is (AC 2, AC 4).
+    ///
+    /// Three situations, told apart by what the app can actually know: which Board the reading on
+    /// screen came from (`dataBoardID`), and which Board the cache slot belongs to.
+    ///
+    /// 1. The cache holds a read of *this* Board — re-evaluated against the current moment, so the
+    ///    Working Day it predates is judged now rather than left at whatever was decided when it was
+    ///    fetched. This is the relaunch-off-the-VPN case and the panel-open-before-the-timeout one.
+    /// 2. The slot holds nothing (nothing has got through yet, it belongs to another Board, or the
+    ///    write failed) but this Board's reading is already on screen from earlier in the session —
+    ///    #11's rule stands, it keeps displaying, and it did not come from this fetch either.
+    /// 3. Neither. What is on screen belongs to another Board or to the corpus, and no caption of
+    ///    this Board's may be put on it: a bundled scenario's Points are not this sprint's cached
+    ///    read any more than another Board's would be. The panel has read nothing, and the request
+    ///    about to be made will either say something or fail and be named.
+    ///
+    /// A state that is not a reading — the active-sprint prompt, a Board with nothing active — is
+    /// left alone in every case. Those are answers the Board gave to a read that *succeeded*; a
+    /// cached forecast is older information about the same Board, and the app does not forecast a
+    /// sprint the Operator has not named (#11) any more eagerly because a newer read has not
+    /// arrived yet.
+    private func showCachedRead(of configuration: JiraLiveConfiguration) {
+        switch content {
+        case .namingActiveSprint, .noActiveSprint:
+            return
+
+        case .forecast, .noWorkAssigned, .nothing:
+            if let cached = cache.load(), cached.boardID == configuration.boardID {
+                dataReadAt = cached.readAt
+                dataBoardID = configuration.boardID
+                apply(
+                    Forecast.evaluate(
+                        snapshot: cached.snapshot,
+                        identity: configuration.identity,
+                        statusMap: statusMap,
+                        workingCalendar: workingCalendar,
+                        baseline: baselineStore.load(),
+                        readAt: cached.readAt,
+                        now: Date()
+                    ),
+                    snapshot: cached.snapshot,
+                    // A cached read re-captures nothing. The Baseline slot belongs to the first
+                    // moment the app saw this sprint, and `readAt` is not that moment — writing it
+                    // here would let a stale read reset the Operator's Scope Delta to zero (#14).
+                    persistingBaseline: false
+                )
+                source = .cached(boardID: configuration.boardID)
+                return
+            }
+
+            if dataBoardID == configuration.boardID {
+                source = .cached(boardID: configuration.boardID)
+                return
+            }
+
+            content = .nothing
+            dataReadAt = nil
+            dataBoardID = nil
+            source = .live(boardID: configuration.boardID)
+        }
     }
 
     /// The gateway call both sources go through: read the Board's active sprints, resolve which

@@ -68,3 +68,17 @@ byte-for-byte equality between the fixture path and the network path plus a M0 w
 assertion that survives untouched — not a reviewer's assurance.
 Refs: #11; `Sources/SprintPulseCore/Jira/LiveJiraGateway.swift`;
 `Tests/SprintPulseCoreTests/LiveJiraGatewayTests.swift`
+
+### 2026-09-23 — The stale-data rule was written down before the thing that could violate it
+#12 added the cache, and with it the one change to the forecast that M1's own ticket list
+allowed: rule 1 of the Confidence table already named "the cache predates the current Working
+Day" in `docs/agents/glossary.md` back at #6, when there was no cache to go stale. So the
+implementation widened an existing rule rather than inventing one — an enum case, a
+`readAt` argument, and a `WorkingCalendar` comparison, with rules 2–9 and the Caps untouched
+and every M0 call site compiling unchanged against a convenience entry point. The cross-repo
+claim: a glossary that records a rule before the mechanism exists turns the milestone's
+hardest behavioural change into a reviewable diff, and the check that it stayed a widening
+rather than a rewrite is executable — the corpus audit and #4's whole-value assertion still
+decide the argument.
+Refs: #12; `Sources/SprintPulseCore/Domain/WorkingCalendar.swift`;
+`Sources/SprintPulseCore/Domain/CachedSprint.swift`; `docs/agents/glossary.md`

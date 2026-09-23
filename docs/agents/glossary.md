@@ -59,6 +59,23 @@ Today counts as a whole Working Day until local midnight. It is deliberately not
 fractional days make the forecast drift downward through the afternoon, which reads as anxiety
 rather than information.
 
+### The age of a read
+
+A read carries two instants: `now`, the moment the reading is evaluated at, and the moment its
+**data** was taken. Rule 1's second trigger is a comparison between the second and the first.
+
+| Term | Definition |
+| --- | --- |
+| **The current Working Day** | `now`'s Working Day, or — when `now` falls in none — the most recent Working Day before it. A Saturday's is Friday; a declared Monday holiday's is the Friday before. |
+| **Predates the current Working Day** | The data's moment is earlier than the start of the current Working Day. One comparison, not a count: no Working Days are summed, and `WDR`/`WDE` are untouched by it. |
+
+The unit is the day because a burn rate's unit is a Working Day: Points read at 09:00 are still
+today's Points at 17:00, and Points read at 23:59 yesterday are not. A cache is judged against the
+moment it is *read back*, never against the moment it was written, so a reading ages into
+`Unknown` on its own without anything having to notice. When the Working pattern holds no Working
+Day at all, everything predates it — there is no day for a read to be current in, and invariant 7
+prefers `Unknown` to a guess.
+
 ## Rates
 
 ```
@@ -80,7 +97,7 @@ Evaluated in this order. The first matching rule wins; evaluation stops there.
 
 | # | Condition | Confidence State |
 | --- | --- | --- |
-| 1 | Any Issue in My Work has an `Unmapped Status`, **or** the cache predates the current Working Day | `Unknown` |
+| 1 | Any Issue in My Work has an `Unmapped Status`, **or** the data behind the read predates the current Working Day | `Unknown` |
 | 2 | `A = 0` and `W = 0` | `Finished` |
 | 3 | `A = 0` and `W > 0` | `Hands Off` |
 | 4 | `WDE < 2` **or** `C = 0` | `Unknown` |
@@ -94,6 +111,33 @@ Rules 1–5 exist so the function is total: no combination of inputs can leave C
 undefined, and no undefined arithmetic (`A/0`, `C/0`) is ever reached.
 
 `Unknown` is a first-class answer, not a failure. It is always preferred to a guess.
+
+### Rule 1's two triggers
+
+Rule 1 answers `Unknown` from either of two conditions, and names whichever it found as the
+Reading's rule (`ConfidenceRule.unmappedStatus`, `ConfidenceRule.dataPredatesWorkingDay`). Where
+both hold, the Unmapped Status is named: it is the thing the Operator can go and map, and a cache
+that is too old resolves itself on the next read that gets through. Both are rule 1 because both
+withdraw the *comparison* while leaving every total standing — the Points, the Flow-State
+partition, and the Scope Delta are all still displayed, and `A` and `C` are still computed from the
+Issues on screen rather than replaced by a dash.
+
+### The age of the data
+
+| Term | Definition |
+| --- | --- |
+| **Current Working Day** | The Working Day a moment falls in — or, when it falls in none (a weekend, a declared Non-Working Date), the most recent Working Day before it. Saturday's is Friday. |
+| **Predates the current Working Day** | `readAt < startOfDay(currentWorkingDay(now))`. One comparison, not a count: no Working Day is summed, and a weekend or a holiday changes only which day is current. |
+
+`readAt` is the instant the data behind a reading was taken: the moment a live response arrived, or
+the timestamp the cache was persisted with. `now` stays the instant the reading is evaluated at.
+Rates, WDR and WDE are computed against `now` and the sprint's own dates regardless of `readAt` —
+staleness withdraws the Confidence State through rule 1 and changes no arithmetic.
+
+The day is the unit because the burn rate's unit is a Working Day: Points read at 09:00 are still
+today's Points at 17:00, and Points read at 23:59 yesterday are not. A calendar with no Working Day
+in it at all reports every read as predating — there is no day for it to be current in, and
+`Unknown` is preferred to a guess (CONTEXT invariant 7).
 
 ## Caps
 

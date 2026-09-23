@@ -102,6 +102,143 @@ final class WorkingCalendarTests: XCTestCase {
         XCTAssertEqual(remaining, 0)
     }
 
+    // MARK: - The current Working Day (#12)
+
+    func test_currentWorkingDay_onAWorkingDayIsThatDay() {
+        let calendar = WorkingCalendar(timeZone: utc)
+
+        XCTAssertEqual(
+            calendar.currentWorkingDay(for: isoDate("2026-09-09T15:45:00Z")),
+            isoDate("2026-09-09T00:00:00Z"),
+            "a Wednesday afternoon belongs to Wednesday, however late in it"
+        )
+    }
+
+    func test_currentWorkingDay_resolvesToTheMostRecentOneWhenTodayIsNotAWorkingDay() {
+        let calendar = WorkingCalendar(timeZone: utc)
+
+        // Saturday and Sunday belong to no Working Day of their own: the day the instrument
+        // judges data against is the Friday the sprint was last burning on.
+        let friday = isoDate("2026-09-11T00:00:00Z")
+        XCTAssertEqual(calendar.currentWorkingDay(for: isoDate("2026-09-12T12:00:00Z")), friday)
+        XCTAssertEqual(calendar.currentWorkingDay(for: isoDate("2026-09-13T12:00:00Z")), friday)
+    }
+
+    func test_currentWorkingDay_stepsBackOverADeclaredNonWorkingDate() {
+        let calendar = WorkingCalendar(
+            nonWorkingDates: [isoDate("2026-09-14T00:00:00Z")], // Monday, a declared holiday
+            timeZone: utc
+        )
+
+        XCTAssertEqual(
+            calendar.currentWorkingDay(for: isoDate("2026-09-14T10:00:00Z")),
+            isoDate("2026-09-11T00:00:00Z"),
+            "a day the Operator declared unavailable is no Working Day to be current in"
+        )
+    }
+
+    func test_currentWorkingDay_isNilWhenThePatternHoldsNoWorkingDay() {
+        let calendar = WorkingCalendar(workingWeekdays: [], timeZone: utc)
+
+        XCTAssertNil(calendar.currentWorkingDay(for: isoDate("2026-09-09T12:00:00Z")))
+    }
+
+    /// A fortnight's shutdown is an ordinary thing for a self-hosted instance to declare, and the
+    /// day a reading is judged against still exists on the other side of it. A search that gave up
+    /// after a week would report no current Working Day and withdraw a forecast that had nothing to
+    /// withdraw for.
+    func test_currentWorkingDay_findsTheLastWorkingDayAcrossADeclaredShutdown() {
+        // Every date from Mon 24 Aug through Fri 04 Sep declared non-working: a two-week stop.
+        let stop = Set(
+            (24...31).map { isoDate("2026-08-\($0)T00:00:00Z") }
+                + (1...4).map { isoDate("2026-09-\($0)T00:00:00Z") }
+        )
+        let calendar = WorkingCalendar(nonWorkingDates: stop, timeZone: utc)
+        let insideTheStop = isoDate("2026-09-02T12:00:00Z")
+
+        // Wed 02 Sep is inside the stop, as are the Monday and Tuesday around it, so the current
+        // Working Day is Friday 21 August — fourteen declared days and a weekend back.
+        XCTAssertEqual(
+            calendar.currentWorkingDay(for: insideTheStop),
+            isoDate("2026-08-21T00:00:00Z")
+        )
+        XCTAssertFalse(
+            calendar.predatesCurrentWorkingDay(readAt: isoDate("2026-08-21T09:00:00Z"), now: insideTheStop),
+            "data from the last day the sprint was burning on is that day's data"
+        )
+        XCTAssertTrue(
+            calendar.predatesCurrentWorkingDay(readAt: isoDate("2026-08-20T17:00:00Z"), now: insideTheStop),
+            "and Thursday's data predates it, stop or no stop"
+        )
+    }
+
+    // MARK: - Predates the current Working Day (rule 1's stale-data trigger)
+
+    func test_predatesCurrentWorkingDay_readEarlierOnTheSameWorkingDay_isFresh() {
+        let calendar = WorkingCalendar(timeZone: utc)
+
+        XCTAssertFalse(
+            calendar.predatesCurrentWorkingDay(
+                readAt: isoDate("2026-09-09T08:30:00Z"), now: isoDate("2026-09-09T17:30:00Z")
+            )
+        )
+    }
+
+    func test_predatesCurrentWorkingDay_readOnAnEarlierWorkingDay_isStale() {
+        let calendar = WorkingCalendar(timeZone: utc)
+
+        XCTAssertTrue(
+            calendar.predatesCurrentWorkingDay(
+                readAt: isoDate("2026-09-08T17:59:00Z"), now: isoDate("2026-09-09T00:01:00Z")
+            ),
+            "one minute past local midnight, the burn rate is yesterday's"
+        )
+    }
+
+    func test_predatesCurrentWorkingDay_theWeekendBuysNothing() {
+        let calendar = WorkingCalendar(timeZone: utc)
+
+        // Thursday's data, judged on Saturday: Friday was a Working Day and passed unread.
+        XCTAssertTrue(
+            calendar.predatesCurrentWorkingDay(
+                readAt: isoDate("2026-09-10T12:00:00Z"), now: isoDate("2026-09-12T12:00:00Z")
+            )
+        )
+        // Friday's data, judged on Saturday: the current Working Day *is* Friday.
+        XCTAssertFalse(
+            calendar.predatesCurrentWorkingDay(
+                readAt: isoDate("2026-09-11T12:00:00Z"), now: isoDate("2026-09-12T12:00:00Z")
+            )
+        )
+        // And on Monday the Friday read is two Working Days behind.
+        XCTAssertTrue(
+            calendar.predatesCurrentWorkingDay(
+                readAt: isoDate("2026-09-11T12:00:00Z"), now: isoDate("2026-09-14T12:00:00Z")
+            )
+        )
+    }
+
+    func test_predatesCurrentWorkingDay_readAtExactlyTheBoundaryOfTheCurrentWorkingDay_isFresh() {
+        let calendar = WorkingCalendar(timeZone: utc)
+
+        XCTAssertFalse(
+            calendar.predatesCurrentWorkingDay(
+                readAt: isoDate("2026-09-09T00:00:00Z"), now: isoDate("2026-09-09T12:00:00Z")
+            )
+        )
+    }
+
+    func test_predatesCurrentWorkingDay_withNoWorkingDayInPattern_isStale() {
+        let calendar = WorkingCalendar(workingWeekdays: [], timeZone: utc)
+
+        XCTAssertTrue(
+            calendar.predatesCurrentWorkingDay(
+                readAt: isoDate("2026-09-09T12:00:00Z"), now: isoDate("2026-09-09T12:00:00Z")
+            ),
+            "no day to be current in means no way to call the data fresh — invariant 7"
+        )
+    }
+
     // MARK: - Working Days Elapsed
 
     func test_workingDaysElapsed_aSprintSpanningAWeekendExcludesTheWeekend() {

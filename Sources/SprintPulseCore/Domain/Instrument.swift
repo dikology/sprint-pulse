@@ -3,11 +3,13 @@ import Foundation
 /// Everything the panel renders, as a single value.
 ///
 /// The panel holds no forecast logic: it displays the fields of an `Instrument` and nothing
-/// more. Each M0 ticket widens this type — Flow States and Points per Flow State (#4), Working
+/// more. Each M0 ticket widened this type — Flow States and Points per Flow State (#4), Working
 /// Days Remaining (#5), the rates and Confidence State (#6), the `ConfidenceReading` that
-/// explains them (#7), and the Scope Delta against the Sprint Baseline (#8). M1 adds no field:
-/// reading a live sprint changed the gateway's implementations, not the model (#11) — and the one
-/// thing the panel needs that is not in here, whether My Work is empty, it asks
+/// explains them (#7), and the Scope Delta against the Sprint Baseline (#8). #11 widened the
+/// gateway's implementations and no field of the model at all; #12 added the two the cache needs,
+/// which are facts about *when the data was read* rather than about the sprint.
+///
+/// The one thing the panel needs that is not in here — whether My Work has any subject — it asks
 /// `SprintSnapshot.myWork(assignedTo:)` for, the same call the forecast sums over.
 public struct Instrument: Equatable, Sendable {
     /// The Active Sprint's name, for the panel header.
@@ -74,6 +76,23 @@ public struct Instrument: Equatable, Sendable {
     /// remaining total without moving this figure (#8).
     public var scopeDelta: Double { liveSprintPoints - baselinePoints }
 
+    /// The moment the data behind this reading was taken (#12). A reading carries it so the panel
+    /// can say how old its own numbers are instead of letting a cached sprint present as a current
+    /// one — the age is a fact about the data, not something the view infers from a clock.
+    ///
+    /// For a fixture this is the moment the scenario pins in its own `now.json` (#9): a scenario
+    /// *is* an observation taken then.
+    public let readAt: Date
+
+    /// Whether that data predates the current Working Day — the judgement behind rule 1's
+    /// stale-data trigger (#12), carried beside the reading it produced.
+    ///
+    /// `Instrument.reading.rule` already names the trigger when it fires, and names the Unmapped
+    /// Status first when both hold. This is the data's own fact, independent of which rule won:
+    /// Points read yesterday are yesterday's Points whether or not something else withdrew the
+    /// forecast too.
+    public let predatesCurrentWorkingDay: Bool
+
     public init(
         sprintName: String,
         pointsByFlowState: [FlowState: Double],
@@ -85,7 +104,9 @@ public struct Instrument: Equatable, Sendable {
         demonstratedRate: Double?,
         reading: ConfidenceReading,
         liveSprintPoints: Double,
-        baselinePoints: Double
+        baselinePoints: Double,
+        readAt: Date,
+        predatesCurrentWorkingDay: Bool
     ) {
         self.sprintName = sprintName
         self.pointsByFlowState = pointsByFlowState
@@ -98,6 +119,8 @@ public struct Instrument: Equatable, Sendable {
         self.reading = reading
         self.liveSprintPoints = liveSprintPoints
         self.baselinePoints = baselinePoints
+        self.readAt = readAt
+        self.predatesCurrentWorkingDay = predatesCurrentWorkingDay
     }
 
     /// Points in one Flow State. `0` for an absent or wholly-unestimated set.

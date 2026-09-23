@@ -58,5 +58,19 @@ public enum FixtureScenario: String, CaseIterable, Identifiable, Sendable {
     /// Assigned, which is a state of its own and not a zero (CONTEXT invariant 13).
     case noWorkAssigned = "no-work-assigned"
 
+    // MARK: Cached reads
+    // The same sprint, observed at two moments — which is the whole of what #12 adds. Both
+    // scenarios are `several-assignees`' Board, its Issues, and its `now.json`, so the pair
+    // differs in exactly one thing: the `read-at.json` beside them, the moment the data behind
+    // the reading was taken. Reachable live on any evening the VPN is off, and reachable here by
+    // clicking, which is the only way either can be checked (#9).
+    /// Data read earlier in the same Working Day: Points are Points whenever they were counted,
+    /// so the forecast stands at `No Sweat`.
+    case cacheWithinWorkingDay = "cache-within-working-day"
+    /// Data read before the current Working Day: rule 1's second trigger withdraws Confidence to
+    /// `Unknown` while the Points totals, the Flow-State partition, and the Scope Delta — a real
+    /// +7 in this scenario, both carry a Baseline — stay on screen.
+    case cachePredatesWorkingDay = "cache-predates-working-day"
+
     public var id: String { rawValue }
 }

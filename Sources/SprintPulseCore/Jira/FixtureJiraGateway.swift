@@ -14,6 +14,9 @@ import Foundation
 /// - `now.json` — the scenario's pinned moment, the date it is read at: a fixture is a
 ///   frozen observation, and the second seam's value belongs to the scenario, not the clock
 ///   of the machine doing the reading (#9)
+/// - optionally `read-at.json` — the moment the *data* behind the scenario was taken, when the
+///   scenario is about the cache (#12): the same app-owned format, and the same reason — an
+///   observation carries both when it was made and how old its subject was
 public struct FixtureJiraGateway: JiraGateway {
     public enum FixtureError: Error, Equatable {
         case fileNotReadable(String)
@@ -75,17 +78,38 @@ public struct FixtureJiraGateway: JiraGateway {
     /// bundled scenario pins one; `FixtureCorpusTests` walks the corpus against that
     /// promise.
     public static func pinnedNow(named name: String) throws -> Date? {
-        let url = try bundledDirectory(named: name).appendingPathComponent("now.json")
+        try pinnedDate(named: "now.json", in: name)
+    }
+
+    public static func pinnedNow(_ scenario: FixtureScenario) throws -> Date? {
+        try pinnedNow(named: scenario.rawValue)
+    }
+
+    /// The moment a cached-read scenario's data was taken — the `read-at.json` of its directory,
+    /// which is what separates the corpus's two cache scenarios: same Board, same Issues, same
+    /// `now.json`, one older read behind the reading (#12). `nil` for every scenario that is a
+    /// fresh observation, where the read and the moment of evaluating it are the same instant —
+    /// which is what `Forecast.evaluate`'s six-argument entry point assumes.
+    public static func bundledReadAt(named name: String) throws -> Date? {
+        try pinnedDate(named: "read-at.json", in: name)
+    }
+
+    public static func bundledReadAt(_ scenario: FixtureScenario) throws -> Date? {
+        try bundledReadAt(named: scenario.rawValue)
+    }
+
+    /// One app-owned ISO-8601 instant in a scenario directory, or `nil` when the scenario does not
+    /// carry that file. A file that is there but unreadable is a malformed scenario rather than an
+    /// absent one: a silently ignored `now.json` would put a fixture back on the wall clock, which
+    /// is the drift #9 exists to prevent.
+    private static func pinnedDate(named file: String, in name: String) throws -> Date? {
+        let url = try bundledDirectory(named: name).appendingPathComponent(file)
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard let string = try? JSONDecoder().decode(String.self, from: data),
               let date = ISO8601DateFormatter().date(from: string) else {
             throw FixtureError.fileMalformed(url.path)
         }
         return date
-    }
-
-    public static func pinnedNow(_ scenario: FixtureScenario) throws -> Date? {
-        try pinnedNow(named: scenario.rawValue)
     }
 
     /// Every scenario directory in the bundled corpus. The picker and the corpus audit read
