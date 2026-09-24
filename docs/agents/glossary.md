@@ -193,6 +193,12 @@ outcomes:
 
 Jira status strings appear here and nowhere else in the system.
 
+The table below is the **shipped default** — the map an Operator starts with, from
+`docs/agents/product.md`. It is editable from #13 on: any status can be added, re-mapped, or taken
+out, any status to any of the six Flow States including `Dropped`, and the edits are persisted by
+the app and handed to the forecast as a value. Editing the map changes what a status means; it
+changes nothing about what the forecast does with the meaning.
+
 | Jira status (Data Center) | Flow State |
 | --- | --- |
 | Backlog | `ToDo` |
@@ -205,7 +211,9 @@ Jira status strings appear here and nowhere else in the system.
 
 Any Jira status not appearing in the map is an **Unmapped Status**. Its Issues are excluded from
 every set, surfaced prominently in the interface, and force Confidence to `Unknown` (rule 1). An
-Unmapped Status is never inferred, defaulted, or bucketed by resemblance.
+Unmapped Status is never inferred, defaulted, or bucketed by resemblance. Resolving one is the
+Operator's own act: mapping the status re-judges the reading already on screen, and issues no
+request.
 
 ## Identity
 

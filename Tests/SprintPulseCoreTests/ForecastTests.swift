@@ -179,6 +179,56 @@ final class ForecastTests: XCTestCase {
         XCTAssertEqual(i.unmappedStatuses, [])
     }
 
+    /// #13's edit at the domain seam: the same fixture and the same moment, with the map the
+    /// Operator edited to cover the statuses their Jira actually has. The Points land in the sets
+    /// the edited map names, and rule 1 stops firing — what is left is the fixture's own gap in
+    /// knowledge (nothing Done yet). Mapping a status never manufactures a rate (#2's bound).
+    func test_evaluate_editingTheMapToCoverAnUnmappedStatus_movesTheirPointsAndChangesTheRule() async throws {
+        let edited = StatusMap.default
+            .setting("Blocked", to: .onHold)
+            .setting("Escalated", to: .inProgress)
+
+        let i = Forecast.evaluate(
+            snapshot: try await snapshot("unmapped-status"),
+            identity: operatorIdentity, statusMap: edited, workingCalendar: workingCalendar,
+            baseline: nil, now: now
+        ).instrument
+
+        XCTAssertEqual(i.unmappedStatuses, [], "the status is named no longer — it has an answer")
+        XCTAssertEqual(i.points(.onHold), 9, "Blocked: UMS-1303 (8) + UMS-1306 (1)")
+        XCTAssertEqual(i.points(.inProgress), 5, "Escalated joins the set and is unsized, so it adds nothing")
+        XCTAssertEqual(i.actionablePoints, 8)
+        XCTAssertEqual(i.waitingPoints, 11)
+        XCTAssertEqual(i.reading.rule, .insufficientHistory, "rule 1 is gone; what is left is the real gap in knowledge")
+        XCTAssertEqual(
+            i.reading.caps, [.unestimated, .waitingHeavy],
+            "UMS-1305 is unsized, and 11 of the 19 remaining Points are now Waiting"
+        )
+        XCTAssertEqual(i.confidenceState, .unknown, "Unknown for a different reason is the table, not a bug")
+    }
+
+    /// `Dropped` is a legal answer for any status (#13 AC 4), and it is the state whose wrong
+    /// mapping corrupts the instrument quietly (ADR-0002). The mapping is the Operator's call; the
+    /// accounting is not — shed Points leave the remaining total and never arrive as Completed.
+    func test_evaluate_mappingAStatusToDropped_shedsItsPointsFromTheRemainingTotalAndCreditsNothing() async throws {
+        let edited = StatusMap.default
+            .setting("Blocked", to: .dropped)
+            .setting("Escalated", to: .toDo)
+
+        let i = Forecast.evaluate(
+            snapshot: try await snapshot("unmapped-status"),
+            identity: operatorIdentity, statusMap: edited, workingCalendar: workingCalendar,
+            baseline: nil, now: now
+        ).instrument
+
+        XCTAssertEqual(i.droppedPoints, 9)
+        XCTAssertEqual(i.completedPoints, 0, "9 Points of shed work are not 9 Points of finished work")
+        XCTAssertEqual(i.pointsRemaining, 10, "the Blocked Points left the remaining total, Escalated added none")
+        XCTAssertEqual(i.points(.toDo), 3, "Escalated joins ToDo unsized")
+        XCTAssertEqual(i.liveSprintPoints, 19, "a mapping is a translation, not a movement of scope (#8)")
+        XCTAssertEqual(i.scopeDelta, 0)
+    }
+
     // MARK: - Unestimated Issues
 
     func test_evaluate_countsUnestimatedIssuesOnlyInActionableOrWaitingAndNeverAsPoints() async throws {

@@ -3,7 +3,11 @@ import Foundation
 /// Sprint Pulse's own vocabulary for where an Issue sits in the workflow. The vocabulary is
 /// fixed and independent of any Jira installation (ADR-0002) — Jira's status strings reach a
 /// Flow State only through the `StatusMap`.
-public enum FlowState: String, CaseIterable, Sendable {
+///
+/// `Codable` for one reason: the Status Map is persisted by the app (#13), and a `FlowState` is a
+/// value inside it. The raw values are the names `docs/agents/glossary.md` uses, so what lands in
+/// the preferences file reads in the domain's vocabulary rather than in somebody's storage format.
+public enum FlowState: String, CaseIterable, Codable, Sendable {
     case toDo = "ToDo"
     case inProgress = "InProgress"
     /// Work that has left the Operator's hands for someone else's judgement but is not

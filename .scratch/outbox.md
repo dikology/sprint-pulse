@@ -82,3 +82,15 @@ rather than a rewrite is executable — the corpus audit and #4's whole-value as
 decide the argument.
 Refs: #12; `Sources/SprintPulseCore/Domain/WorkingCalendar.swift`;
 `Sources/SprintPulseCore/Domain/CachedSprint.swift`; `docs/agents/glossary.md`
+
+### 2026-09-24 — An operator-facing write path landed without a single new rule
+#13 shipped the Status Map editor — the milestone's only *write* surface: the Operator adds,
+re-maps, and removes Jira-status translations, persisted across launches. The cross-repo claim the
+series can now make: an agent pipeline can put an editor in front of a user without touching the
+decision logic, when the domain already took that configuration as a value (`Forecast.evaluate` had
+taken `statusMap` as an argument since #4) — here the rule table, its order, and the Caps changed by
+zero lines, and the new "an edit re-judges the standing read instead of issuing a fetch" rule kept a
+stated invariant (a live read happens only on the Operator's initiative) true by construction rather
+than by discipline. M1's instrument work is now closed; only Baseline persistence (#14) and the
+mode-switch parity check (#15) stand between this repo and its MVP.
+Refs: #13; `Sources/SprintPulse/StatusMapStore.swift`; `Sources/SprintPulse/PanelModel.swift`

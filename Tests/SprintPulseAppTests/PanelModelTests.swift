@@ -15,11 +15,12 @@ import XCTest
 /// These cases decide live-versus-fixture by asking the Keychain whether a credential exists, so
 /// they go through the real item — the same seam #10 tested, and no Jira credential is involved
 /// either way. On a machine where the Keychain refuses to work, `skipUnlessKeychainWorks` stands
-/// the lot down; that silence covers #11's ACs 4, 5, 7 and 8 and #12's 1, 2, 3, 4, 6, 7, 8 and 9
+/// the lot down; that silence covers #11's ACs 4, 5, 7 and 8, #12's 1, 2, 3, 4, 6, 7, 8 and 9
 /// (the Board remembered, the sprint named, the fetch bound, the empty subject; the read cached,
 /// the cached read displayed instead of an error screen, its age named, and the credential kept out
-/// of it), so a green run here means the Keychain answered. The gateway, the paging, the decoding
-/// and the forecast are all covered without it, in `SprintPulseCoreTests`.
+/// of it), and #13's live-Board cases (a status the map does not know, resolved by the editor
+/// without a second fetch) — so a green run here means the Keychain answered. The gateway, the
+/// paging, the decoding and the forecast are all covered without it, in `SprintPulseCoreTests`.
 @MainActor
 final class PanelModelTests: XCTestCase {
     let identity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
@@ -37,6 +38,11 @@ final class PanelModelTests: XCTestCase {
     /// would write the Operator's real `UserDefaults` from a test run, and one test's cached read
     /// would arrive in the next (#12).
     private var cache: SprintCacheStore { SprintCacheStore(defaults: defaults) }
+
+    /// The Status Map slot, in the same throwaway domain (#13) — so an edit made by one test is
+    /// gone before the next one reads a map, and the relaunch cases read back what the panel
+    /// before them wrote.
+    private var statusMaps: StatusMapStore { StatusMapStore(defaults: defaults) }
 
     override func setUpWithError() throws {
         defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -259,6 +265,7 @@ final class PanelModelTests: XCTestCase {
         )
         let model = PanelModel(
             settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { _, _ in box.gateway }
         )
         await model.windowDidAppear()
@@ -280,6 +287,7 @@ final class PanelModelTests: XCTestCase {
         try configureLive()
         let model = PanelModel(
             settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { _, _ in
                 JSONGateway(sprints: "", issues: "", error: .credentialRejected)
             }
@@ -387,6 +395,7 @@ final class PanelModelTests: XCTestCase {
         try configureLive()
         let model = PanelModel(
             settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { _, _ in throw Unnamed() }
         )
 
@@ -565,6 +574,7 @@ final class PanelModelTests: XCTestCase {
         let sprints = oneSprint, issues = myWork
         let opening = PanelModel(
             settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { _, _ in GatedGateway(sprints: sprints, issues: issues, gate: gate) }
         )
         let window = Task { await opening.windowDidAppear() }
@@ -590,6 +600,7 @@ final class PanelModelTests: XCTestCase {
         )
         let model = PanelModel(
             settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { _, _ in box.gateway }
         )
 
@@ -722,6 +733,7 @@ final class PanelModelTests: XCTestCase {
         )
         let model = PanelModel(
             settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { _, _ in box.gateway }
         )
         await model.windowDidAppear()
@@ -749,6 +761,7 @@ final class PanelModelTests: XCTestCase {
         )
         let model = PanelModel(
             settings: settings, credentials: credentials, baselineStore: baselines, cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { _, _ in box.gateway }
         )
         await model.windowDidAppear()
@@ -773,6 +786,293 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(model.readProblem, JiraClientError.unreachableHost(host: "jira.example.com").message)
     }
 
+    // MARK: - Editing the Status Map (#13)
+
+    /// The arc #13 exists for, on a corpus scenario: a reading that stands, the same status taken
+    /// out of the map so the reading withdraws and *names* what is missing, then mapped back so the
+    /// forecast returns — every step an act of the Operator's, none of them a request.
+    ///
+    /// `several-assignees` is the scenario to do this with because it is the corpus's one sprint
+    /// with Completed Points behind an unmappable status: withdrawing "In Progress" from the map is
+    /// enough to make `Unknown` fire on rule 1, and putting it back is enough to un-fire it.
+    func test_editingTheMap_rejudgesTheReadingOnScreen_andRestoresTheForecastWithoutARequest() async throws {
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        model.scenario = .severalAssignees
+        await waitUntil { model.instrument != nil }
+
+        let standing = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(standing.confidenceState, .noSweat)
+        XCTAssertEqual(standing.actionablePoints, 5, "3 In Progress + 2 Open")
+
+        // An Unmapped Status is named exactly, and its Points leave every total.
+        model.setMapping(jiraStatus: "In Progress", to: nil)
+        let withdrawn = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(withdrawn.unmappedStatuses, ["In Progress"], "the panel says what to add, in Jira's own words")
+        XCTAssertEqual(withdrawn.reading.rule, .unmappedStatus)
+        XCTAssertEqual(withdrawn.confidenceState, .unknown)
+        XCTAssertEqual(withdrawn.actionablePoints, 2, "the 3 Points in that status are in no set now")
+        XCTAssertEqual(withdrawn.liveSprintPoints, 43, "a mapping is a translation, not a movement of scope")
+
+        // Mapping it back: the same reading, from the same data, on the click that fixed the map.
+        model.setMapping(jiraStatus: "In Progress", to: .inProgress)
+        let restored = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(restored.confidenceState, .noSweat, "resolving the problem visibly fixes it (#13 AC 3)")
+        XCTAssertEqual(restored, standing, "the whole reading, exactly as it was before the edit")
+
+        XCTAssertEqual(reads.count, 0, "an edit is not an ask of the Board — invariant 14's list does not grow here")
+    }
+
+    /// AC 1's second word, on the seam where it actually bites: a relaunch. The panel that starts
+    /// after an edit reads the edited map, so the Operator does not meet the same `Unmapped Status`
+    /// twice because the app forgot.
+    func test_anEditToTheMap_survivesARelaunch() async throws {
+        let first = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        first.scenario = .severalAssignees
+        await waitUntil { first.instrument != nil }
+
+        first.setMapping(jiraStatus: "In Progress", to: .inReview)
+
+        XCTAssertEqual(statusMaps.load().flowState(for: "In Progress"), .inReview, "written through, not just remembered in memory")
+        XCTAssertEqual(first.statusMap.flowState(for: "In Progress"), .inReview)
+
+        let relaunched = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        relaunched.scenario = .severalAssignees
+        await waitUntil { relaunched.instrument != nil }
+
+        XCTAssertEqual(relaunched.statusMap.flowState(for: "In Progress"), .inReview)
+        let instrument = try XCTUnwrap(relaunched.instrument)
+        XCTAssertEqual(instrument.points(.inReview), 3, "the 3 Points are Waiting now, on the launch after the edit")
+        XCTAssertEqual(instrument.actionablePoints, 2)
+        XCTAssertEqual(instrument.reading.caps, [.waitingHeavy], "3 Waiting against 2 Actionable is over the line")
+    }
+
+    /// A live read meeting a status the shipped map does not know, resolved by the editor rather
+    /// than by another request. This is #13's whole premise on a real Board: the `Unmapped Status`
+    /// is a condition the Operator can act on, and acting on it re-judges the data the Board
+    /// already sent.
+    ///
+    /// The Confidence *State* is asserted only as "not `Unknown`", never as a named band: a live read
+    /// is judged against the wall clock, so which band it lands in drifts as the recorded sprint's
+    /// dates pass. That it lands in a band at all is stable, because the recorded sprint keeps
+    /// Completed Points > 0 and gains Working Days Elapsed, so neither withdrawal rule can fire
+    /// again on this data once the status is mapped.
+    func test_aLiveReadMeetingAnUnmappedStatus_isResolvedByTheEditor_withoutAnotherFetch() async throws {
+        try configureLive()
+        let reads = Reads()
+        let model = makeModel(
+            reading: .json(sprints: oneSprint, issues: myWorkWithABlockedIssue), into: reads
+        )
+        await model.windowDidAppear()
+
+        let withdrawn = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(withdrawn.reading.rule, .unmappedStatus)
+        XCTAssertEqual(withdrawn.unmappedStatuses, ["Blocked"], "named in Jira's own words, so the Operator knows what to add")
+        XCTAssertEqual(withdrawn.actionablePoints, 5, "the Blocked Issue's 4 Points are in no total")
+        XCTAssertEqual(withdrawn.waitingPoints, 0)
+        let fetched = try XCTUnwrap(cache.load())
+
+        model.setMapping(jiraStatus: "Blocked", to: .onHold)
+
+        let restored = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(restored.unmappedStatuses, [], "the status is named no longer — it has an answer")
+        XCTAssertNotEqual(restored.reading.rule, .unmappedStatus, "rule 1 stopped firing, because the Operator fixed its trigger")
+        XCTAssertNotEqual(
+            restored.confidenceState, .unknown,
+            "and the reading is a forecast again, not a withdrawal — #13 AC 6's second half on a status the map never knew"
+        )
+        XCTAssertEqual(restored.waitingPoints, 4, "On Hold is Waiting: the Points arrived somewhere the reader can see")
+        XCTAssertEqual(restored.actionablePoints, 5)
+        XCTAssertEqual(restored.pointsRemaining, 9)
+        XCTAssertNil(model.readProblem, "and nothing about the connection changed")
+
+        XCTAssertEqual(reads.count, 1, "the one fetch that got through is the only one this reading needed")
+        XCTAssertEqual(model.source, .live(boardID: boardID), "and the panel still says where its data came from")
+        XCTAssertEqual(model.dataReadAt, fetched.readAt, "an edit does not date the reading afresh — it is the same read")
+        XCTAssertEqual(cache.load(), fetched, "the drawer holds the read that got through, not the map edit beside it")
+    }
+
+    /// An edit reaches the menu bar too, from the same re-judgement: the number the Operator glances
+    /// at is the one the map produced, not the one from before they fixed the map.
+    func test_anEditToTheMap_movesTheMenuBarNumber_withoutARequest() async throws {
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        model.scenario = .severalAssignees
+        await waitUntil { model.instrument != nil }
+        XCTAssertEqual(model.menuBarLabel, "▲ 5", "3 In Progress + 2 Open")
+
+        // A status the Operator reads as finished work: the remaining total is the figure the bar
+        // carries, so the edit has to move it or the bar is showing a superseded reading.
+        model.setMapping(jiraStatus: "In Progress", to: .done)
+
+        XCTAssertEqual(model.menuBarLabel, "▲ 2", "the 3 Points stopped being remaining")
+        XCTAssertEqual(try XCTUnwrap(model.instrument).completedPoints, 15)
+    }
+
+    /// #11's rule outranks #13's: a map edit while the Board is asking which sprint is tracked
+    /// persists, and publishes nothing. The app does not forecast a sprint the Operator has not
+    /// named just because the map got better in the meantime.
+    func test_anEditWhileTheSprintPromptIsStanding_persistsAndForecastsNothing() async throws {
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+
+        // A reading first, so the panel genuinely has one to bury: the guard only means something
+        // when a superseded read is still sitting in the model. Clicking to the corpus's
+        // two-active-sprint Board replaces it with the prompt (#11).
+        await waitUntil { model.instrument != nil }
+        model.scenario = .twoActiveSprints
+        await waitUntil { model.content.sprintCandidates != nil }
+
+        model.setMapping(jiraStatus: "In Progress", to: .onHold)
+
+        XCTAssertNotNil(model.content.sprintCandidates, "the prompt is still what is on screen")
+        XCTAssertNil(model.instrument, "and no reading appeared under it")
+        XCTAssertEqual(model.statusMap.flowState(for: "In Progress"), .onHold)
+        XCTAssertEqual(statusMaps.load().flowState(for: "In Progress"), .onHold, "the edit itself is not lost")
+        XCTAssertEqual(reads.count, 0)
+
+        // Answering the prompt now reads the sprint with the edited map: the edit took effect, it
+        // just did not invent a subject.
+        model.choose(trackedSprintID: 5311)
+        await waitUntil { model.instrument != nil }
+        XCTAssertEqual(try XCTUnwrap(model.instrument).points(.onHold), 3, "the In Progress Issues are On Hold now")
+    }
+
+    /// Rule 1 has two triggers and they are not interchangeable (#12): mapping a status cannot
+    /// un-read a day that has passed. The withdrawal changes its name and keeps its answer, and the
+    /// Points the edit moved stay moved — which is the whole reason the panel shows both.
+    func test_anEditToTheMap_doesNotClearTheStaleDataWithdrawal() async throws {
+        try configureLive()
+        let online = makeModel(
+            reading: .json(sprints: oneSprint, issues: myWorkWithABlockedIssue), into: Reads()
+        )
+        await online.windowDidAppear()
+        let read = try XCTUnwrap(cache.load())
+        let calendar = Calendar.current
+        cache.save(
+            CachedSprint(
+                boardID: read.boardID,
+                readAt: calendar.date(byAdding: .day, value: -3, to: read.readAt)!,
+                snapshot: read.snapshot
+            )
+        )
+
+        let offline = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await offline.windowDidAppear()
+        XCTAssertEqual(try XCTUnwrap(offline.instrument).reading.rule, .unmappedStatus, "rule 1 names the mappable reason first")
+
+        offline.setMapping(jiraStatus: "Blocked", to: .dropped)
+
+        let instrument = try XCTUnwrap(offline.instrument)
+        XCTAssertEqual(instrument.reading.rule, .dataPredatesWorkingDay, "the other trigger, still firing")
+        XCTAssertEqual(instrument.confidenceState, .unknown, "an edit to the map is not a fresh read")
+        XCTAssertEqual(instrument.droppedPoints, 4)
+        XCTAssertEqual(instrument.completedPoints, 8, "and shed work is still not credited as finished")
+        XCTAssertEqual(instrument.liveSprintPoints, 17, "the Points, the partition, and the shape all stay on screen")
+    }
+
+    /// The refusal half of the editor: a draft that is not a status, and a status with no answer
+    /// beside it. Both name themselves, and neither touches the map — a row the Operator meant to
+    /// fill in later must not become a mapping of one Point into `ToDo` by default.
+    func test_theAddRow_refusesAnEmptyNameAndAnUnchosenFlowState_andChangesNothing() async throws {
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        model.scenario = .unmappedStatus
+        await waitUntil { model.instrument != nil }
+        let before = try XCTUnwrap(model.instrument)
+
+        model.newStatusText = "   "
+        model.newStatusFlowState = .toDo
+        model.addStatusToMap()
+
+        let emptyRefusal = try XCTUnwrap(model.statusMapProblem)
+        XCTAssertTrue(emptyRefusal.contains("exactly as Jira spells it"), emptyRefusal)
+        XCTAssertEqual(model.statusMap, StatusMap.default, "nothing was mapped")
+
+        model.newStatusText = "QA Review"
+        model.newStatusFlowState = nil
+        model.addStatusToMap()
+
+        let stateRefusal = try XCTUnwrap(model.statusMapProblem)
+        XCTAssertTrue(stateRefusal.contains("QA Review"), "the refusal names the draft it is about: \(stateRefusal)")
+        XCTAssertTrue(stateRefusal.contains("Dropped"), "and points at the answer the Operator may be missing: \(stateRefusal)")
+        XCTAssertEqual(model.statusMap, StatusMap.default)
+        XCTAssertEqual(model.instrument, before, "and the reading on screen is untouched by a refusal")
+
+        model.newStatusFlowState = .inReview
+        model.addStatusToMap()
+
+        XCTAssertNil(model.statusMapProblem, "the refusal goes away with the thing that caused it")
+        XCTAssertEqual(model.statusMap.flowState(for: "QA Review"), .inReview)
+        XCTAssertEqual(model.newStatusText, "", "the row is ready for the next status")
+        XCTAssertNil(model.newStatusFlowState)
+    }
+
+    /// The other way out of a refusal. An Operator who is told to name the status may answer by
+    /// picking in the row menu beside the warning instead of typing in the add row — and a refusal
+    /// still standing after a successful edit is the panel complaining about a draft that is no
+    /// longer the subject of the screen.
+    func test_aRowMenuEditRetiresTheAddRowsRefusal() async throws {
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        model.scenario = .unmappedStatus
+        await waitUntil { model.instrument != nil }
+
+        model.newStatusText = ""
+        model.addStatusToMap()
+        XCTAssertNotNil(model.statusMapProblem, "refused, as it should be")
+
+        model.setMapping(jiraStatus: "Blocked", to: .onHold)
+
+        XCTAssertNil(model.statusMapProblem, "the edit is the answer; the refusal is spent")
+        XCTAssertEqual(model.statusMap.flowState(for: "Blocked"), .onHold)
+        XCTAssertEqual(try XCTUnwrap(model.instrument).unmappedStatuses, ["Escalated"])
+    }
+
+    /// The commit half: a status name is trimmed, because an Operator pasting it out of Jira gets
+    /// whitespace with it, and the map matches names exactly thereafter — which is the whole of
+    /// ADR-0002's warning about resemblance.
+    func test_theAddRow_trimsTheNameAndMapsIt() async throws {
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        model.scenario = .unmappedStatus
+        await waitUntil { model.instrument != nil }
+
+        model.newStatusText = "  Blocked \n"
+        model.newStatusFlowState = .onHold
+        model.addStatusToMap()
+
+        XCTAssertEqual(model.statusMap.flowState(for: "Blocked"), .onHold)
+        XCTAssertNil(model.statusMap.flowState(for: "  Blocked \n"), "one name, spelled as Jira spells it")
+        let instrument = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(instrument.unmappedStatuses, ["Escalated"], "the other unknown status still waits to be named")
+        XCTAssertEqual(instrument.waitingPoints, 11, "Blocked's 9 Points joined In Review's 2")
+    }
+
+    /// The `Unmapped Status` arc on the corpus scenario #13's AC 6 names: `unmapped-status` is the
+    /// fixture whose two statuses the shipped map does not know. Covering both empties the list and
+    /// changes which rule the Reading names — and the fixture has nothing Done, so the forecast
+    /// stays `Unknown` for its own honest reason rather than for a gap in the translation.
+    func test_mappingBothUnknownStatuses_endTheNamingAndChangeTheReasonForUnknown() async throws {
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        model.scenario = .unmappedStatus
+        await waitUntil { model.instrument != nil }
+
+        let withdrawn = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(withdrawn.unmappedStatuses, ["Blocked", "Escalated"], "each named once, exactly")
+        XCTAssertEqual(withdrawn.reading.rule, .unmappedStatus)
+
+        model.setMapping(jiraStatus: "Blocked", to: .onHold)
+        model.setMapping(jiraStatus: "Escalated", to: .inProgress)
+
+        let edited = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(edited.unmappedStatuses, [])
+        XCTAssertEqual(edited.reading.rule, .insufficientHistory, "nothing Done yet — a different gap, an honest one")
+        XCTAssertEqual(edited.confidenceState, .unknown, "which is still not a guess")
+        XCTAssertEqual(edited.actionablePoints, 8)
+        XCTAssertEqual(edited.waitingPoints, 11)
+        XCTAssertEqual(edited.unestimatedCount, 1, "Escalated joined Actionable unsized, and is counted, not zeroed")
+    }
+
     // MARK: - Helpers
 
     private func makeModel(reading: Reading, into reads: Reads) -> PanelModel {
@@ -781,6 +1081,7 @@ final class PanelModelTests: XCTestCase {
             credentials: credentials,
             baselineStore: baselines,
             cache: cache,
+            statusMaps: statusMaps,
             liveGateway: { configuration, token in
                 reads.record(configuration: configuration, token: token)
                 return JSONGateway(
@@ -872,6 +1173,15 @@ final class PanelModelTests: XCTestCase {
         ("L-1", "In Progress", 5, "dgimaletdinov", "JIRAUSER10500"),
         ("L-2", "Done", 8, "dgimaletdinov", "JIRAUSER10500"),
         ("L-3", "In Progress", 13, "aivanova", "JIRAUSER10877"),
+    ])
+
+    /// The same sprint with a status the shipped map does not know about — 4 Points in "Blocked",
+    /// beside 5 Actionable and 8 Completed of the Operator's own. The shape #13 exists for: a
+    /// reading that could be made if only the map knew the column the work is sitting in.
+    private let myWorkWithABlockedIssue = issuesJSON([
+        ("L-1", "In Progress", 5, "dgimaletdinov", "JIRAUSER10500"),
+        ("L-2", "Done", 8, "dgimaletdinov", "JIRAUSER10500"),
+        ("L-4", "Blocked", 4, "dgimaletdinov", "JIRAUSER10500"),
     ])
 
     /// The same sprint with nothing in it that belongs to the Operator.

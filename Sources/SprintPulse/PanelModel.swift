@@ -14,8 +14,9 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 }
 
 /// Owns the platform concerns the domain must not: reaching the gateway (a bundled scenario on
-/// disk, or one Board over HTTP), persisting the Sprint Baseline and the last successful read, and
-/// supplying "now". It calls `Forecast.evaluate` and publishes the result for the panel to render.
+/// disk, or one Board over HTTP), persisting the Sprint Baseline, the last successful read, and the
+/// Status Map the Operator has edited, and supplying "now". It calls `Forecast.evaluate` and
+/// publishes the result for the panel to render.
 ///
 /// Two sources, one protocol (#11): `FixtureJiraGateway` and `LiveJiraGateway` satisfy the same
 /// `JiraGateway`, so everything below the gateway is the same code path producing the same
@@ -25,7 +26,9 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 /// presses Refresh, and when they change the connection they want read — a Board remembered, a
 /// credential resolved or revoked. There is no timer and no polling anywhere in the app, and no
 /// live read at launch. A fixture read issues no request at all, which is why the picker can keep
-/// loading on click.
+/// loading on click. Editing the Status Map (#13) is neither: it asks nothing of the Board and
+/// re-judges the data already on screen, so mapping a status restores a forecast on the click
+/// rather than at the next Refresh.
 ///
 /// What a read leaves on screen when it fails (#12): the last read that succeeded, with its age
 /// against it. Being off the VPN is this milestone's ordinary condition, so the cache is not a
@@ -148,9 +151,13 @@ final class PanelModel: ObservableObject {
     /// previous reading on screen: stale, not broken (#11), and #12 puts an age beside it.
     @Published private(set) var readProblem: String?
 
-    /// The default map, displayed read-only in M0; the editor is #13.
-    let statusMap = StatusMap.default
-    /// Monday–Friday, no Non-Working Dates, displayed read-only in M0; the editor is #13.
+    /// The Operator's Status Map (#13): `StatusMap.default` until they edit it, their edits from
+    /// then on. Published because the panel renders it *and* the reading on screen is judged
+    /// through it, so an edit has to be visible in the same breath it was made.
+    @Published private(set) var statusMap: StatusMap
+
+    /// Monday–Friday, no Non-Working Dates, and still read-only: #13's ACs are the map's, and a
+    /// Non-Working Date changes the forecast's own inputs rather than what one status means.
     private let workingCalendar = WorkingCalendar.default
 
     private let settings: JiraSettingsStore
@@ -159,6 +166,8 @@ final class PanelModel: ObservableObject {
     /// The last read that succeeded, so a Board that is unreachable tonight is not a panel with
     /// nothing on it (#12).
     private let cache: SprintCacheStore
+    /// Where the map is kept, so a status mapped tonight is still mapped at the next launch (#13).
+    private let statusMapStore: StatusMapStore
 
     /// The answer to the active-sprint prompt while the panel is reading the corpus. Held in
     /// memory only: a fixture's sprint id is nobody's configuration, and persisting it would let
@@ -177,17 +186,44 @@ final class PanelModel: ObservableObject {
 
     private let liveGateway: LiveGatewayFactory
 
+    /// The read behind whatever is on screen: exactly what `Forecast.evaluate` was given, kept so a
+    /// Status Map edit (#13) can be judged against *that* data rather than against a fresh one.
+    ///
+    /// Held as the inputs rather than as the result because the result is the thing being replaced:
+    /// re-running the evaluation with an edited map is the whole of "mapping a status restores the
+    /// forecast", and issuing a request to find out what the panel already knows is both a second
+    /// way to reach `Forecast.evaluate` and a rule invariant 14 does not license.
+    ///
+    /// `nil` whenever the panel is showing something that is not a reading — nothing read yet, the
+    /// active-sprint prompt, a Board with nothing active — because an edit must not resurrect a
+    /// forecast the panel has stopped showing. #11's rule that the app never forecasts a sprint the
+    /// Operator has not named outranks #13's rule that an edit takes effect at once.
+    private struct CurrentRead {
+        let snapshot: SprintSnapshot
+        /// The subject the read was about — the identity the forecast summed My Work over, which is
+        /// the same question `apply` asks when it decides whether there is a reading at all.
+        let identity: OperatorIdentity
+        let baseline: SprintBaseline?
+        let readAt: Date
+        let now: Date
+    }
+
+    private var currentRead: CurrentRead?
+
     init(
         settings: JiraSettingsStore = JiraSettingsStore(),
         credentials: JiraCredentialStore = JiraCredentialStore(),
         baselineStore: BaselineStore = BaselineStore(),
         cache: SprintCacheStore = SprintCacheStore(),
+        statusMaps: StatusMapStore = StatusMapStore(),
         liveGateway: @escaping LiveGatewayFactory = PanelModel.liveGateway
     ) {
         self.settings = settings
         self.credentials = credentials
         self.baselineStore = baselineStore
         self.cache = cache
+        self.statusMapStore = statusMaps
+        self.statusMap = statusMaps.load()
         self.liveGateway = liveGateway
 
         if let configuration = liveConfiguration {
@@ -384,16 +420,13 @@ final class PanelModel: ObservableObject {
         let readAt = try FixtureJiraGateway.bundledReadAt(scenario) ?? moment
 
         apply(
-            Forecast.evaluate(
+            CurrentRead(
                 snapshot: snapshot,
                 identity: fixtureIdentity,
-                statusMap: statusMap,
-                workingCalendar: workingCalendar,
                 baseline: stored,
                 readAt: readAt,
                 now: moment
             ),
-            snapshot: snapshot,
             // A fixture is an observation of somebody else's sprint, so it does not write the
             // app's Baseline slot: clicking through the corpus would otherwise destroy the
             // day-one snapshot of the Operator's own real sprint and restart its Scope Delta
@@ -440,16 +473,13 @@ final class PanelModel: ObservableObject {
         cache.save(CachedSprint(boardID: configuration.boardID, readAt: readAt, snapshot: snapshot))
 
         apply(
-            Forecast.evaluate(
+            CurrentRead(
                 snapshot: snapshot,
                 identity: configuration.identity,
-                statusMap: statusMap,
-                workingCalendar: workingCalendar,
                 baseline: baselineStore.load(),
                 readAt: readAt,
                 now: readAt
             ),
-            snapshot: snapshot,
             persistingBaseline: true
         )
     }
@@ -488,16 +518,13 @@ final class PanelModel: ObservableObject {
                 dataReadAt = cached.readAt
                 dataBoardID = configuration.boardID
                 apply(
-                    Forecast.evaluate(
+                    CurrentRead(
                         snapshot: cached.snapshot,
                         identity: configuration.identity,
-                        statusMap: statusMap,
-                        workingCalendar: workingCalendar,
                         baseline: baselineStore.load(),
                         readAt: cached.readAt,
                         now: Date()
                     ),
-                    snapshot: cached.snapshot,
                     // A cached read re-captures nothing. The Baseline slot belongs to the first
                     // moment the app saw this sprint, and `readAt` is not that moment — writing it
                     // here would let a stale read reset the Operator's Scope Delta to zero (#14).
@@ -515,8 +542,92 @@ final class PanelModel: ObservableObject {
             content = .nothing
             dataReadAt = nil
             dataBoardID = nil
+            currentRead = nil
             source = .live(boardID: configuration.boardID)
         }
+    }
+
+    // MARK: - Editing the Status Map (#13)
+
+    /// The status name typed into the editor's add row, exactly as the Operator wrote it until
+    /// `addStatusToMap` trims it. Held here rather than in the view for the same reason
+    /// `JiraSetupModel` holds the Board draft: the typing and the refusal of it belong together,
+    /// and a view function that validates is a rule no test can reach.
+    @Published var newStatusText = ""
+
+    /// The Flow State chosen for that draft. `nil` until the Operator chooses one, which is the
+    /// point — an unchosen state is a refusal with a reason in it, never a default applied quietly
+    /// to a status nobody asked about.
+    @Published var newStatusFlowState: FlowState?
+
+    /// Why the last map edit was refused. Deliberately apart from `readProblem`: a Board that could
+    /// not be reached and a status name typed from nowhere are two different sentences, and one of
+    /// them leaves a reading standing while the other changes nothing at all.
+    @Published private(set) var statusMapProblem: String?
+
+    /// The one writer of the Status Map. A `nil` Flow State removes the entry, which makes the
+    /// status an `Unmapped Status` again — an edit with a consequence, so the editor says so rather
+    /// than pretending a row cannot leave the map.
+    ///
+    /// Every change is persisted and then *re-judged*: the read already on screen goes through
+    /// `Forecast.evaluate` again with the new map, which is what makes mapping a status restore the
+    /// forecast on the click rather than at the next Refresh (#13 AC 3). No request is issued — an
+    /// edit is the Operator changing what the app knows about their workflow, not an ask of the
+    /// Board, and invariant 14's list of the moments a live read happens does not grow here. Off the
+    /// VPN that re-judgement falls on the cached read, which is precisely the case where fetching to
+    /// find out would have found nothing.
+    func setMapping(jiraStatus: String, to flowState: FlowState?) {
+        let edited = flowState.map { statusMap.setting(jiraStatus, to: $0) }
+            ?? statusMap.removing(jiraStatus)
+        statusMapStore.save(edited)
+        statusMap = edited
+        // An edit made any way at all retires the add row's refusal: the Operator may well have
+        // gone and fixed the draft with the row menu instead of answering the prompt, and a
+        // complaint about a draft that is no longer the subject of the screen is a lie by then.
+        statusMapProblem = nil
+        rejudgeCurrentRead()
+    }
+
+    /// The add row's commit: a status name and a Flow State, both required, the name trimmed and
+    /// matched exactly from then on (ADR-0002 — a status is never mapped by resemblance, so the name
+    /// has to be the one Jira uses). A refusal names itself and changes nothing: a draft that is not
+    /// a status is not an edit.
+    func addStatusToMap() {
+        let jiraStatus = newStatusText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !jiraStatus.isEmpty else {
+            // No example status name is quoted here, because the map is the only thing in the app
+            // allowed to hold one (invariant 1) — and a made-up column the Operator's Jira may not
+            // have would be a worse illustration than none.
+            statusMapProblem =
+                "Type the status exactly as Jira spells it — the map matches names, spaces, and case, not resemblance."
+            return
+        }
+        guard let flowState = newStatusFlowState else {
+            statusMapProblem =
+                "Choose which Flow State \"\(jiraStatus)\" is. Every one of the six is a legal answer, including Dropped — that is how a status that means the work left your sprint gets counted."
+            return
+        }
+        setMapping(jiraStatus: jiraStatus, to: flowState)
+        newStatusText = ""
+        newStatusFlowState = nil
+    }
+
+    /// Runs the standing read through the domain again with whatever the map says now. Nothing to
+    /// re-judge when the panel is showing a state that is not a reading — a map edit is persisted
+    /// either way, and the next read takes it — and never a re-read: `readAt`, `now`, the subject,
+    /// and the Baseline operand are the ones that produced what is on screen.
+    ///
+    /// Reusing the read's `now` is deliberate, and it is the same rule the panel already holds: an
+    /// edit makes the map better, it does not make the data fresher. For a fixture the moment is the
+    /// scenario's own (#9) and re-sampling it would walk Working Days past the sprint the scenario
+    /// describes; for a live or cached read the verdict on the data's age was taken when the window
+    /// opened, and nothing here re-times a sentence that has been printed. So an edit made shortly
+    /// after midnight re-judges yesterday's numbers as yesterday's reading, and the next window open
+    /// withdraws it the way it withdraws everything else that aged — which is the same behaviour a
+    /// reading that is never edited has.
+    private func rejudgeCurrentRead() {
+        guard let currentRead else { return }
+        apply(currentRead, persistingBaseline: false)
     }
 
     /// The gateway call both sources go through: read the Board's active sprints, resolve which
@@ -538,26 +649,42 @@ final class PanelModel: ObservableObject {
             return SprintSnapshot(sprint: sprint, issues: issues.issues)
         case .noActiveSprint:
             content = .noActiveSprint
+            // Not a reading, so there is nothing for a later map edit to re-judge (#13).
+            currentRead = nil
             return nil
         case .awaitingOperatorChoice(let candidates):
             content = .namingActiveSprint(candidates)
+            currentRead = nil
             return nil
         }
     }
 
-    /// The one place that decides whether a reading is a reading or an empty subject (#11). The
+    /// The one place a reading is produced, from the inputs the read that made it had — the only
+    /// route to `Forecast.evaluate` in the app, so the live path, the fixture path, the cached path,
+    /// and an edit to the Status Map (#13) all judge the same data by the same table.
+    ///
+    /// Also the one place that decides whether a reading is a reading or an empty subject (#11). The
     /// forecast's rules are untouched by it: rule 2 really does answer `Finished` over an empty
     /// My Work, and `all-dropped` proves that is the right word for a sprint whose work is done.
-    /// The question "is there any My Work at all" is asked of `SprintSnapshot.myWork` — the same
-    /// definition the forecast summed over — so the two can never disagree about what My Work is.
-    private func apply(
-        _ result: (instrument: Instrument, baseline: SprintBaseline),
-        snapshot: SprintSnapshot,
-        persistingBaseline: Bool
-    ) {
+    /// The question "is there any My Work at all" is asked of `SprintSnapshot.myWork` with the same
+    /// identity the forecast summed over — the same definition, from the same value — so the two can
+    /// never disagree about what My Work is.
+    private func apply(_ read: CurrentRead, persistingBaseline: Bool) {
+        currentRead = read
+
+        let result = Forecast.evaluate(
+            snapshot: read.snapshot,
+            identity: read.identity,
+            statusMap: statusMap,
+            workingCalendar: workingCalendar,
+            baseline: read.baseline,
+            readAt: read.readAt,
+            now: read.now
+        )
+
         if persistingBaseline { baselineStore.save(result.baseline) }
 
-        if snapshot.myWork(assignedTo: readingIdentity).isEmpty {
+        if read.snapshot.myWork(assignedTo: read.identity).isEmpty {
             content = .noWorkAssigned(
                 sprintName: result.instrument.sprintName,
                 teamScopePoints: result.instrument.liveSprintPoints

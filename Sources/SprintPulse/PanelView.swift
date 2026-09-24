@@ -31,6 +31,12 @@ struct PanelView: View {
                 problemLine(readProblem)
             }
 
+            // The Status Map is configuration, not a figure in the reading: it belongs beside the
+            // Board and the Estimate field, editable whether or not there is a reading to show —
+            // an `Unmapped Status` is exactly the case where the Operator arrives here from a
+            // warning, and a Board that will not answer is no reason they cannot fix the map.
+            statusMapEditor
+
             Divider()
 
             jiraConnection
@@ -443,22 +449,35 @@ struct PanelView: View {
         rateRow("Required Rate", instrument.requiredRate)
         rateRow("Demonstrated Rate", instrument.demonstratedRate)
 
-        // An Unmapped Status is surfaced prominently, naming the status. Its Issues are in no
-        // set below. The warning reads as one utterance — the icon and colour emphasise it,
-        // the words carry it (#9).
+        // An Unmapped Status is surfaced prominently and named exactly — in Jira's own spelling, so
+        // the Operator can see which column to look at. Its Issues are in no set below. #13 gave the
+        // warning the other half of what it needs: the status arrives with a menu beside it, so
+        // encountering one is a condition to resolve here rather than a fact to go and act on
+        // somewhere else. The icon and colour emphasise it; the words carry it (#9).
         if !instrument.unmappedStatuses.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 Label("Unmapped status", systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline.bold())
                     .foregroundStyle(.orange)
-                Text(instrument.unmappedStatuses.joined(separator: ", "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Its Issues are excluded from the forecast totals until the status is mapped.")
+                Text("Its Issues are excluded from the forecast totals until the status is mapped. Choose what each one means and the reading above is recomputed — no request, no Refresh.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(instrument.unmappedStatuses, id: \.self) { jiraStatus in
+                    HStack {
+                        Text(jiraStatus)
+                            .font(.caption)
+                            .textSelection(.enabled)
+                        Spacer()
+                        mappingMenu(
+                            jiraStatus, emptySelectionLabel: "Choose a Flow State"
+                        )
+                    }
+                }
             }
-            .accessibilityElement(children: .combine)
+            // `.contain`: this block now holds a control per status, and a reader has to be able to
+            // reach each one — combining them would swallow the menus (#9).
+            .accessibilityElement(children: .contain)
         }
 
         flowSection("Actionable", states: FlowState.actionable, instrument: instrument)
@@ -506,41 +525,140 @@ struct PanelView: View {
         }
         .font(.callout)
         .accessibilityElement(children: .combine)
+    }
 
-        Divider()
+    // MARK: - The Status Map editor (#13)
 
-        // A plain button rather than a `DisclosureGroup`: the system disclosure animates its
-        // rows open, and M0 ships with no motion at all (#9). The state lives in the row's
-        // visibility — spelled out below, because a collapsed chevron rotating into an
-        // upward one is exactly the kind of meaning an image alone must not carry.
-        Button {
-            statusMapExpanded.toggle()
-        } label: {
-            HStack {
-                Text("Status Map (read-only)")
-                Spacer()
-                Image(systemName: statusMapExpanded ? "chevron.up" : "chevron.down")
-                    .accessibilityHidden(true)
+    /// The map, editable: the only place in Sprint Pulse where a Jira status name is *translated*
+    /// into a Flow State (ADR-0002, CONTEXT invariant 1) — a status name surfaces anywhere else only
+    /// as the data of an `Unmapped Status`, which is what sends the Operator here.
+    ///
+    /// A row's menu holds all six Flow States plus "Not mapped", so any status can be sent to any
+    /// state — `Dropped` included, which is the mapping ADR-0002 names as the one that corrupts the
+    /// instrument quietly and is nonetheless the Operator's to make — and taking a status out of the
+    /// map is the same control rather than a second affordance. There is no Save button: a pick is
+    /// written through and the reading above is judged again in the same breath, which is what
+    /// "mapping a status restores the forecast" means on screen (#13 AC 3).
+    ///
+    /// The disclosure is a plain button rather than a `DisclosureGroup` because the system one
+    /// animates its rows open, and the panel ships with no motion at all (#9). The state lives in
+    /// the rows' visibility, spelled out in `accessibilityValue`, because a chevron that rotates is
+    /// exactly the meaning an image alone must not carry.
+    @ViewBuilder
+    private var statusMapEditor: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                statusMapExpanded.toggle()
+            } label: {
+                HStack {
+                    Text("Status Map")
+                    Spacer()
+                    Image(systemName: statusMapExpanded ? "chevron.up" : "chevron.down")
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .font(.caption)
-        .accessibilityValue(statusMapExpanded ? "expanded" : "collapsed")
+            .buttonStyle(.plain)
+            .font(.caption)
+            .accessibilityValue(statusMapExpanded ? "expanded" : "collapsed")
 
-        if statusMapExpanded {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(panel.statusMap.rows, id: \.jiraStatus) { entry in
-                    HStack {
-                        Text(entry.jiraStatus)
-                        Spacer()
-                        Text(label(for: entry.flowState)).foregroundStyle(.secondary)
+            if statusMapExpanded {
+                Text("Jira status names live here and nowhere else in Sprint Pulse. A change takes effect on the reading above at once — no Refresh, and no request to Jira.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if panel.statusMap.rows.isEmpty {
+                    // An emptied map is the Operator's own edit, and its consequence is every status
+                    // Unmapped. The panel says which map is in use whatever the reason (#13).
+                    Text("The map is empty, so every status Jira reports is an Unmapped Status until a row is added.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(panel.statusMap.rows, id: \.jiraStatus) { row in
+                        HStack {
+                            Text(row.jiraStatus)
+                                .textSelection(.enabled)
+                            Spacer()
+                            mappingMenu(
+                                row.jiraStatus, emptySelectionLabel: "Not mapped"
+                            )
+                        }
                     }
-                    .accessibilityElement(children: .combine)
+                }
+                .font(.caption)
+
+                TextField("Another status — exactly as Jira spells it", text: $panel.newStatusText)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Jira status to add to the map")
+
+                HStack {
+                    flowStateMenu(
+                        "Flow State for the status being added",
+                        selection: $panel.newStatusFlowState,
+                        emptySelectionLabel: "Choose a Flow State"
+                    )
+                    Button("Add to the map") {
+                        panel.addStatusToMap()
+                    }
+                }
+
+                if let problem = panel.statusMapProblem {
+                    Text(problem)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
             }
-            .font(.caption)
-            .padding(.top, 2)
+        }
+        // `.contain`, not the value rows' `.combine`: every row here is a control the reader has to
+        // reach on their own — the same distinction the Jira connection form draws (#9).
+        .accessibilityElement(children: .contain)
+    }
+
+    /// A menu over the six Flow States. The `nil` case is labelled differently in the two places it
+    /// appears — "Not mapped" on a row that is in the map, "Choose a Flow State" on a draft that is
+    /// not yet one — because an unchosen draft and a deliberate removal are two different acts, and
+    /// the second one has a consequence the panel must not soft-pedal.
+    private func flowStateMenu(
+        _ name: String, selection: Binding<FlowState?>, emptySelectionLabel: String
+    ) -> some View {
+        Picker(name, selection: selection) {
+            Text(emptySelectionLabel).tag(nil as FlowState?)
+            flowStateOptions
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .fixedSize()
+    }
+
+    /// The same menu for one named status, read out of the map and written back through the model's
+    /// one writer. Both the `Unmapped Status` warning and the map's own rows need it — the first to
+    /// be resolvable where it is met, the second to be correctable afterwards — and the two must not
+    /// disagree about what picking does (#13).
+    private func mappingMenu(_ jiraStatus: String, emptySelectionLabel: String) -> some View {
+        flowStateMenu(
+            "Flow State for \(jiraStatus)",
+            selection: Binding<FlowState?>(
+                get: { panel.statusMap.flowState(for: jiraStatus) },
+                set: { panel.setMapping(jiraStatus: jiraStatus, to: $0) }
+            ),
+            emptySelectionLabel: emptySelectionLabel
+        )
+    }
+
+    /// The six Flow States, in the domain's own order and in the panel's words. One list, so a
+    /// row's menu and the add row's cannot drift apart — and `FlowState.allCases` is the whole
+    /// vocabulary, which is what makes every status mappable to every state, `Dropped` included
+    /// (#13 AC 4).
+    @ViewBuilder
+    private var flowStateOptions: some View {
+        ForEach(FlowState.allCases, id: \.self) { state in
+            Text(label(for: state)).tag(state as FlowState?)
         }
     }
 

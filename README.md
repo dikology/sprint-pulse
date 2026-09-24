@@ -40,9 +40,12 @@ of it — the rule that matched, plus any Cap that demoted the reading, spelled 
 numbers underneath. Below them, the sprint's shape: the Team Scope total — every Issue in the
 sprint, dim and secondary, with no forecast ever attached to it — the Points recorded the first
 time the sprint was observed, and the Scope Delta between them — added scope and removed work
-read as different words, not just different signs. The Status Map is shown read-only ([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md));
-its editor is M1. Nothing on the panel animates or loops, and nothing conveys meaning by image
-or colour alone: every figure is spelled out for a screen reader.
+read as different words, not just different signs. The Status Map is the Operator's own
+([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md)): every row is a menu over the six
+Flow States, a status can be added or taken out, and the edit is persisted — an `Unmapped Status`
+arrives with a menu beside it and mapping it recomputes the reading on the spot (#13). Nothing on
+the panel animates or loops, and nothing conveys meaning by image or colour alone: every figure is
+spelled out for a screen reader.
 
 ## Status
 
@@ -111,6 +114,28 @@ where both envelopes have decoded and the tracked sprint is resolved, so a trunc
 the good entry standing, and `CachedSprint` is the app's own JSON with no field a credential could
 be parked in. Two corpus scenarios carry the pair — same Board, same Issues, same observed moment,
 one `read-at.json` apart — so the withdrawn reading is reachable by clicking it.
+
+The Status Map editor ([#13](https://github.com/dikology/sprint-pulse/issues/13)) is what turns an
+`Unmapped Status` from a fact the panel reports into a condition the Operator can resolve. The map
+ships as the same seven rows from `docs/agents/product.md` and every change after that is the
+Operator's own — a status added, re-mapped, or taken out — persisted in the preferences beside the
+rest of the Jira configuration and read back at launch, so a column is discovered once rather than
+every evening. The read-only disclosure became menus: each row offers all six Flow States plus
+"Not mapped", which is how any status reaches any state, `Dropped` included. That mapping stays the
+Operator's to make and the accounting stays the model's — shed Points leave the remaining total and
+never arrive as Completed — and the warning a real workflow produces now arrives with the menu
+beside it. A pick is written through and re-judged in the same breath: `PanelModel` keeps the inputs
+of the read that produced what is on screen and runs them through `Forecast.evaluate` again, so
+mapping a status restores the forecast on the click rather than at the next Refresh. Deliberately no
+request: an edit changes what the app knows about a workflow, not what the Board is asked about
+(#2's rule that a live read happens only on the Operator's initiative), and off the VPN the cached
+read is the thing that gets re-judged. What an edit cannot do either way is change the age of the
+data: a reading that was withdrawn because it predates the current Working Day stays withdrawn after
+the map is fixed, and a reading that was fresh when it was taken stays an answer for the moment it
+was taken — the moment a live read was judged at belongs to that read, and the next window open is
+what re-takes the verdict. A better map is not a fresher read. Core gained two value-returning
+operations and a `Codable` conformance, still performs no I/O, and the Confidence table is
+untouched: #13 changed what the map can say, not what the forecast does with it.
 
 ## Licence
 

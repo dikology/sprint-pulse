@@ -164,9 +164,9 @@ slumped posture. An expedition has hard days without the climber having failed; 
 would make the instrument an authority figure and productivity performative.
 
 - **M0 ships with no motion at all** (#9): the panel is static text. The loading state is a
-  plain line, not a spinner; the read-only Status Map opens on click without animating; the
-  scenario picker is a menu. Every bullet below describes the mascot's M3 future, not the
-  M0 panel.
+  plain line, not a spinner; the Status Map opens on click without animating — including as the
+  editor it became in #13, whose rows are menus rather than a disclosure group; the scenario picker
+  is a menu. Every bullet below describes the mascot's M3 future, not the M0 panel.
 - Animation fires **only on a change of Confidence State**. Nothing idle-loops — a looping
   animation in peripheral vision is a permanent low-grade demand for attention.
 - Under `accessibilityDisplayShouldReduceMotion`, transitions become cross-fades.
