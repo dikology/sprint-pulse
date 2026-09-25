@@ -103,6 +103,20 @@ An Intent is resolved against the transitions Jira currently offers for that Iss
 with no legal transition is absent from the interface rather than shown as failing.
 _Avoid_: action, transition (when referring to the button)
 
+### Surfaces
+
+**Glance**:
+The collapsed surface Sprint Pulse keeps on screen beside the notch — or top-centre of a screen
+without one. It shows Points remaining and nothing that can go stale or be demoted: no Confidence
+State, no rate. Opening it is a click, never a hover.
+_Avoid_: pill, island, notch view, HUD, menu bar item
+
+**Panel**:
+The expanded surface a click on the Glance opens: the reading and every figure it was computed
+from. Configuration is not on it — the one exception is choosing a Flow State for an Unmapped
+Status, which is resolved where it is seen.
+_Avoid_: popover, window, dashboard
+
 ### Sources
 
 **Fixture Mode**:
@@ -212,21 +226,22 @@ _Avoid_: scope creep, churn
 8. Sub-task estimates are ignored rather than rolled up.
 9. The forecast runs on live Points. The Sprint Baseline explains movement; it is never the
    basis of a forecast.
-10. Every number shown must be reproducible by hand from other numbers shown on the same screen.
+10. Every number shown must be reproducible by hand from other numbers shown on the same Panel. The
+    Glance shows Points remaining only, a figure that claims no Confidence.
 11. An Intent with no legal Jira transition is absent from the interface, not disabled or errored.
 12. A displayed Confidence State always carries its Reading — the rule that matched and the Caps
     that fired — as data. Its Explanation is rendered from that Reading and re-derives no
     arithmetic of its own.
 13. An empty My Work is never rendered as a confident zero. Where the resolved identity matched no
-    Issue, the panel shows No Work Assigned instead of the reading, and the menu bar shows no
+    Issue, the Panel shows No Work Assigned instead of the reading, and the Glance shows no
     number; rule 2's `Finished` stays what it means — work completed, not work absent.
-14. A live read is issued by the Operator, not by the app: when the panel window opens, on
+14. A live read is issued by the Operator, not by the app: when the Operator opens the Panel, on
     explicit refresh, and in answer to something they did to the connection — remembering a Board
     or an Estimate field, resolving or revoking a credential, naming the tracked sprint among
     several active ones, or switching the panel off Fixture Mode and back onto their Board. No
     timer and no polling reaches Jira, and no live read happens at launch.
 15. Every reading carries the instant its data was taken, and a Cached Read is never shown as a
-    live one: the panel says which of the two it is and how old the data is. Data that predates the
+    live one: the Panel says which of the two it is and how old the data is. Data that predates the
     current Working Day withdraws Confidence to `Unknown` through rule 1 while its Point totals, its
     Flow-State partition, and its Scope Delta stay on screen. A read that failed overwrites neither
     the Cached Read nor the Sprint Baseline.

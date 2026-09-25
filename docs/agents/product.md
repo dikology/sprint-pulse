@@ -163,6 +163,27 @@ covers every reachable state — each Confidence State, both Caps firing, an `Un
 present, `Hands Off`, a large Scope Delta, a mid-sprint cold start, and a sprint entirely
 `Dropped`. A state absent from the fixtures is untestable and will ship broken.
 
+## Surfaces
+
+Sprint Pulse lives at the notch, not in the menu bar (M1.5,
+[ADR-0006](../adr/0006-notch-glance-opened-by-click.md)). Two surfaces, one window of its own:
+
+- The **Glance** sits beside the notch — top-centre on a screen without one — and shows
+  `▲` Points remaining. Nothing else: no Confidence State, no rate, nothing that can go stale or be
+  demoted. Where there is no reading or No Work Assigned, it shows no number. Right-click offers
+  Settings… and Quit.
+- A **click** on the Glance opens the **Panel**; a hover does nothing, because opening the Panel is
+  a live read (invariant 14). Esc or a click outside closes it. It opens instantly.
+- The Panel holds the reading and every figure it was computed from, one compressed source line
+  (`Live · 4m`, `Cached · 3h`, `Fixture · cap-both`), Refresh, and nothing else — except the
+  Unmapped Status warning's Flow State menu, resolved where it is seen.
+- **Settings** is a standard macOS window: Jira connection, Board, Estimate field, the Status Map
+  editor, and Fixture Mode with its scenario picker.
+
+The Panel carries no explanatory prose. What a figure means is this document's job and
+`CONTEXT.md`'s; the instrument states, it does not annotate itself. Status text the invariants
+require — the Explanation, the source and age, the Baseline's capture moment — stays, compressed.
+
 ## Presentation, motion, and accessibility
 
 The mascot depicts **terrain and weather, never judgement**. `Tight` is steep ground and
@@ -170,7 +191,8 @@ gathering cloud; `Off Track` is a long climb in bad light. Never a disappointed 
 slumped posture. An expedition has hard days without the climber having failed; a sad mascot
 would make the instrument an authority figure and productivity performative.
 
-- **M0 ships with no motion at all** (#9): the panel is static text. The loading state is a
+- **M0 ships with no motion at all** (#9): the panel is static text, and M1.5's Panel opens
+  without animating. The loading state is a
   plain line, not a spinner; the Status Map opens on click without animating — including as the
   editor it became in #13, whose rows are menus rather than a disclosure group; the scenario picker
   is a menu. Every bullet below describes the mascot's M3 future, not the M0 panel.
@@ -200,6 +222,7 @@ full sprint.
 | --- | --- | --- |
 | **M0** — the instrument, offline | `SprintPulseCore` (Flow States, Status Map, forecast, Confidence States, Caps); the fixture corpus; a menu-bar panel showing Points by Flow State, Working Days Remaining, Required Rate, Demonstrated Rate, Confidence State with a one-line explanation, and the unestimated / dropped / Scope Delta lines. No Jira. | ✅ |
 | **M1** — live reads | Keychain PAT, base URL and board config, `/myself` identity, live sprint and issue fetch, cache with age stamp, `Unknown` on stale, Status Map editor, Baseline persisted per sprint, fixture/live mode switch. | ✅ |
+| **M1.5** — the notch | The Glance and Panel in Sprint Pulse's own notch window, replacing `MenuBarExtra`; configuration moved to a Settings window; explanatory prose removed and status text compressed; VoiceOver reachability of the Glance. No change to `SprintPulseCore`. | ❌ |
 | **M2** — writes | Per-issue legal transitions, the three Intents, reversibility-derived confirmation, undo. | ❌ |
 | **M3** — the mascot | Terrain and weather states, change-only animation, reduced-motion handling. | ❌ |
 
@@ -208,7 +231,8 @@ something true about a sprint or it does not, and that is answerable with fixtur
 a line of networking code. M2 is the only part that can damage anything — writes against a
 workflow the Operator does not control belong on top of an integration already trusted, not
 built beside it. M3 is last because a mascot rendering an unvalidated forecast is decoration on
-a possibly-wrong number.
+a possibly-wrong number. M1.5 comes before M2 so the Intent buttons are designed into the Panel's
+final shape rather than moved into it.
 
 **The cheapest possible gut-check** is M0 alone, pointed at fixtures hand-transcribed from a real
 current sprint. If the Confidence State matches the Operator's own felt sense of that sprint, the
@@ -216,5 +240,6 @@ model is right and M1 is plumbing.
 
 ## Hosting
 
-Sprint Pulse ships as a standalone menu-bar app, not a Boring Notch fork. Licence: MIT. See
+Sprint Pulse ships as a standalone app — a menu-bar app through M1, a notch app from M1.5 — not a
+Boring Notch fork. Licence: MIT. See
 [ADR-0005](../adr/0005-standalone-app-not-a-boring-notch-fork.md).

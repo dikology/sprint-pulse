@@ -123,3 +123,13 @@ produce (the Operator's real transition graph, anonymised into `fixtures/` while
 hand) and names the facts in it that only a capture could surface: a transition spelled with a
 leading space, and a `Done` with no way back.
 Refs: #15; `Tests/SprintPulseCoreTests/LiveJiraGatewayTests.swift`; `fixtures/m2-transition-graph.json`; `Sources/SprintPulse/PanelModel.swift`
+
+### 2026-09-25 — A milestone inserted before writes: M1.5, the notch
+The M0/M1/M2 narrative gains a step. Before M2's Intents, Sprint Pulse moves from the menu bar to its
+own notch window: a Glance showing Points remaining only, and a Panel opened by click that carries the
+reading and nothing that annotates it, with all configuration moved to a Settings window (#16). The
+cross-repo claim is how the interview reached "click, not hover": the notch-app convention was not
+refused on taste. It was checked against an invariant written two milestones earlier (a live read is
+the Operator's act) and found to be polling in disguise. ADR-0005, which rejected Boring Notch, stands
+untouched, because its own Consequences had already named this as "a second thin view layer".
+Refs: #16, #17, #18, #19; `docs/adr/0006-notch-glance-opened-by-click.md`; `CONTEXT.md` (Glance, Panel)
