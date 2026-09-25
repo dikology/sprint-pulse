@@ -156,8 +156,8 @@ never claims one that did not. See CONTEXT *Reading* and *Explanation*.
 
 | Term | Definition |
 | --- | --- |
-| **Sprint Baseline** | The Issue set and Estimates of the Active Sprint, snapshotted the first time Sprint Pulse observes it as active, persisted locally. |
-| **Scope Delta** | Live sprint Points minus Sprint Baseline Points. Displayed; never forecast against. |
+| **Sprint Baseline** | The Issue set and Estimates of the Active Sprint, snapshotted the first time Sprint Pulse observes it as active. Held one per sprint and persisted locally, so it outlives quitting the app and the Operator naming a different active sprint; the moment it was taken is shown beside the Delta. |
+| **Scope Delta** | Live sprint Points minus Sprint Baseline Points — so `0` means nothing moved *since that Baseline*, not since the sprint began. Displayed; never forecast against. |
 
 The Baseline exists solely to attribute movement. A fall in Confidence is either the Operator
 falling behind or the sprint growing, and those demand different responses.

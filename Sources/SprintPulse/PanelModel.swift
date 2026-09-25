@@ -147,6 +147,26 @@ final class PanelModel: ObservableObject {
         return line + "."
     }
 
+    /// The Baseline row's own date (#14 AC 6): the moment this sprint was first seen, printed beside
+    /// the Points it recorded, so a Scope Delta always says *since when*.
+    ///
+    /// Read off the standing reading rather than out of the slot, so the sentence can only ever be
+    /// attached to the Delta it belongs to — the same discipline as `dataReadAt` and `dataBoardID`
+    /// travelling together (#12). No clock is involved: this states when the Baseline *was* taken and
+    /// never how long ago, so unlike an age it cannot go stale beside an open window.
+    ///
+    /// The qualifying clause is unconditional on purpose, and it is the ticket's honesty requirement
+    /// rather than a hedge. A Sprint Baseline is defined as the first *observation* of a sprint, not
+    /// as its first day; whether the two coincided is not knowable here — Jira reports a start date,
+    /// and the app may have been pointed at the Board a week after it — so the sentence names which
+    /// of the two it is showing instead of claiming the one it cannot check.
+    var baselineCaption: String? {
+        guard let capturedAt = instrument?.baselineCapturedAt else { return nil }
+        return "Baseline taken \(Self.readDayFormatter.string(from: capturedAt)) at "
+            + "\(Self.readTimeFormatter.string(from: capturedAt)) — "
+            + "the first time Sprint Pulse saw this sprint, which may be partway through it."
+    }
+
     /// The panel's line for a read that failed, held apart from `content` so a failure leaves the
     /// previous reading on screen: stale, not broken (#11), and #12 puts an age beside it.
     @Published private(set) var readProblem: String?
@@ -406,9 +426,11 @@ final class PanelModel: ObservableObject {
         // *is* its stored Baseline: otherwise the picker could load scope-growth and watch
         // the instrument capture the baseline from the live fixture itself, reading Delta 0
         // forever — the one movement the scenario exists to show. Every other scenario falls
-        // back to the app's own persisted Baseline, exactly as live mode does; a stale one
-        // from another sprint re-captures on mismatch, which is `Forecast`'s existing rule.
-        let stored = try FixtureJiraGateway.bundledBaseline(scenario) ?? baselineStore.load()
+        // back to the app's own Baseline for the sprint that scenario names, exactly as live
+        // mode does; a slot holding another sprint's Baseline answers nothing (#14), so the
+        // scenario is a first observation and `Forecast` captures from its pinned moment.
+        let stored = try FixtureJiraGateway.bundledBaseline(scenario)
+            ?? baselineStore.load(sprintID: snapshot.sprint.id)
 
         // A scenario that is about the cache (#12) carries the moment its own data was taken beside
         // the moment it is observed at, which is the only thing separating the corpus's two
@@ -476,7 +498,7 @@ final class PanelModel: ObservableObject {
             CurrentRead(
                 snapshot: snapshot,
                 identity: configuration.identity,
-                baseline: baselineStore.load(),
+                baseline: baselineStore.load(sprintID: snapshot.sprint.id),
                 readAt: readAt,
                 now: readAt
             ),
@@ -521,13 +543,16 @@ final class PanelModel: ObservableObject {
                     CurrentRead(
                         snapshot: cached.snapshot,
                         identity: configuration.identity,
-                        baseline: baselineStore.load(),
+                        baseline: baselineStore.load(sprintID: cached.snapshot.sprint.id),
                         readAt: cached.readAt,
                         now: Date()
                     ),
-                    // A cached read re-captures nothing. The Baseline slot belongs to the first
-                    // moment the app saw this sprint, and `readAt` is not that moment — writing it
-                    // here would let a stale read reset the Operator's Scope Delta to zero (#14).
+                    // A cached read re-captures nothing. The Baseline belongs to the first moment
+                    // the app saw this sprint, and `readAt` is not that moment — writing it here
+                    // would let a stale read reset the Operator's Scope Delta to zero (#14). The
+                    // Baseline it is compared against is this sprint's own: the slot is filed by
+                    // sprint id, so a cached read of last week's sprint is measured against last
+                    // week's Baseline rather than whatever the current one happens to be (#14).
                     persistingBaseline: false
                 )
                 source = .cached(boardID: configuration.boardID)

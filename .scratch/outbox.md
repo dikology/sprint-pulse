@@ -94,3 +94,17 @@ stated invariant (a live read happens only on the Operator's initiative) true by
 than by discipline. M1's instrument work is now closed; only Baseline persistence (#14) and the
 mode-switch parity check (#15) stand between this repo and its MVP.
 Refs: #13; `Sources/SprintPulse/StatusMapStore.swift`; `Sources/SprintPulse/PanelModel.swift`
+
+### 2026-09-25 — A persistence change was audited against its own upgrade path, not a fresh install
+#14 made the Sprint Baseline survive relaunch and filed it one per sprint. What is worth citing is
+where the work was *not*: the capture rule, the Scope Delta arithmetic and `Forecast.evaluate`'s
+signature are #8's and stayed put, core gaining one `Date` field and no I/O. The thinking went into
+two consequences no acceptance criterion named. The slot's previous unkeyed shape is still on a
+running install — keying it without a reader for the old blob would have reset the Operator's Scope
+Delta to zero *in the commit whose stated purpose is preventing that reset*. And a persisted `0`
+stops being self-explanatory once it can be a week old, which is why the Baseline's capture moment
+now prints beside it rather than a claim about day one the app cannot check. The cross-repo claim:
+an agent told to "persist X" defaults to the fresh-install path, and the check that catches this is
+re-reading the ticket's own failure mode against the state an upgrade actually starts from — one
+test when the store keeps its key and decodes both shapes. M1 is now one ticket from closing (#15).
+Refs: #14; `Sources/SprintPulse/BaselineStore.swift`; `Tests/SprintPulseAppTests/BaselineStoreTests.swift`; `Sources/SprintPulse/PanelModel.swift`

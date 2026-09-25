@@ -329,7 +329,7 @@ final class PanelModelTests: XCTestCase {
         let reads = Reads()
         let live = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
         await live.windowDidAppear()
-        let stored = try XCTUnwrap(baselines.load())
+        let stored = try XCTUnwrap(baselines.load(sprintID: 1))
         XCTAssertEqual(stored.sprintID, 1, "the live sprint's own Baseline, captured on first sight")
 
         try credentials.delete()  // back to fixtures, same preferences
@@ -337,7 +337,7 @@ final class PanelModelTests: XCTestCase {
         browsing.scenario = .capBoth
         await waitUntil { browsing.instrument != nil }
 
-        XCTAssertEqual(baselines.load(), stored, "the corpus left the Operator's Baseline alone")
+        XCTAssertEqual(baselines.load(sprintID: 1), stored, "the corpus left the Operator's Baseline alone")
     }
 
     /// An answer given while browsing the corpus is not the Operator's configuration. Persisting
@@ -786,6 +786,134 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(model.readProblem, JiraClientError.unreachableHost(host: "jira.example.com").message)
     }
 
+    // MARK: - The Baseline on a live sprint (#14)
+
+    /// AC 2 and AC 5 together, at the only seam where "survived a relaunch" is decidable: a second
+    /// `PanelModel` over the same preferences, reading a Board whose scope moved while the app was
+    /// closed. The Delta on screen is that growth — not `0`, which is what a Baseline that got
+    /// re-captured from this read would report, and the exact lie #14's own ticket text names.
+    func test_relaunchMeasuresTheScopeDeltaAgainstThePersistedBaseline() async throws {
+        try configureLive()
+        let reads = Reads()
+
+        let before = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        await before.windowDidAppear()
+        let captured = try XCTUnwrap(baselines.load(sprintID: 1))
+        XCTAssertEqual(
+            captured.entries.map(\.key).sorted(), ["L-1", "L-2", "L-3"],
+            "the whole sprint's task-level Issues, not only the Operator's"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(before.instrument).scopeDelta, 0,
+            "a first observation has witnessed no movement"
+        )
+
+        let after = makeModel(reading: .json(sprints: oneSprint, issues: myWorkWithScopeAdded), into: reads)
+        await after.windowDidAppear()
+
+        let instrument = try XCTUnwrap(after.instrument)
+        XCTAssertEqual(instrument.liveSprintPoints, 39)
+        XCTAssertEqual(instrument.baselinePoints, 26, "the shape the first session recorded")
+        XCTAssertEqual(instrument.scopeDelta, 13, "one Issue entered while the app was shut")
+        XCTAssertEqual(baselines.load(sprintID: 1), captured, "re-reading a sprint re-captures nothing")
+    }
+
+    /// AC 4 at the panel: a Baseline per sprint. #11 lets one Board report two active sprints and
+    /// asks the Operator to name one, so naming the other and coming back is an ordinary sequence —
+    /// and a single Baseline slot would make it destructive, silently restarting the first sprint's
+    /// Scope Delta at zero on a sprint the app has watched grow for a fortnight.
+    func test_namingAnotherActiveSprintKeepsTheFirstSprintsBaseline() async throws {
+        try configureLive()
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: twoSprints, issues: myWork), into: reads)
+
+        await model.windowDidAppear()
+        XCTAssertNotNil(model.content.sprintCandidates, "the Board named two, so the app asks")
+
+        model.choose(trackedSprintID: 1)
+        await waitUntil { model.instrument != nil }
+        let sprintOne = try XCTUnwrap(baselines.load(sprintID: 1))
+
+        model.choose(trackedSprintID: 2)
+        await waitUntil { model.instrument?.sprintName == "Growth Sprint 2" }
+        let sprintTwo = try XCTUnwrap(baselines.load(sprintID: 2))
+        XCTAssertEqual(sprintTwo.sprintID, 2, "the second sprint captured its own first observation")
+
+        // Back to the first sprint, on a Board that has grown since. The Delta is the whole point of
+        // the ticket: measured from sprint 1's own first observation, which the excursion to sprint 2
+        // left untouched. Had the slot held one Baseline total, this read would re-capture and the
+        // same grown Board would read `0` — the silent reset, not an error.
+        let grown = makeModel(reading: .json(sprints: twoSprints, issues: myWorkWithScopeAdded), into: reads)
+        grown.choose(trackedSprintID: 1)
+        await waitUntil { grown.instrument?.sprintName == "Mobile Platform Sprint 1" }
+
+        let instrument = try XCTUnwrap(grown.instrument)
+        XCTAssertEqual(instrument.scopeDelta, 13, "sprint 1's history outlived naming sprint 2")
+        XCTAssertEqual(baselines.load(sprintID: 1), sprintOne)
+        XCTAssertEqual(baselines.load(sprintID: 2), sprintTwo)
+    }
+
+    /// AC 6 on the panel. The corpus's `baseline-cold-start` *is* the day-six install: its sprint
+    /// began on 1 Sep and the scenario is observed on 8 Sep, so the Baseline it captures is a week
+    /// late, and the only honest thing to do about that is say which moment the row belongs to. A
+    /// `0` Delta beside a silent "Baseline Points" is the implication this test forbids.
+    func test_theBaselineRowNamesTheMomentItWasTakenNotTheSprintsFirstDay() async throws {
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        model.scenario = .baselineColdStart
+        await waitUntil { model.instrument != nil }
+
+        let instrument = try XCTUnwrap(model.instrument)
+        XCTAssertEqual(instrument.scopeDelta, 0, "a cold start has witnessed no movement yet")
+
+        let caption = try XCTUnwrap(model.baselineCaption)
+        XCTAssertTrue(
+            caption.contains(Self.day(instrument.baselineCapturedAt)),
+            "the row names the day the Baseline was taken: \(caption)"
+        )
+        XCTAssertFalse(caption.contains("1 Sep"), "not the day the sprint started, which nobody saw")
+        for claim in ["day one", "first day", "original", "start"] {
+            XCTAssertFalse(caption.contains(claim), "the panel claims \(claim): \(caption)")
+        }
+
+        /// The other half of AC 6, and the half a cold start cannot test alone: when the Baseline
+        /// *predates* the read, the row must date itself to the Baseline. `scope-growth` bundles a
+        /// day-one `baseline.json` taken on 1 Sep while the scenario is observed on 8 Sep, so the two
+        /// moments are a week apart — a caption reading `instrument.readAt` would print the wrong day
+        /// and every assertion above would still pass.
+        let held = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        held.scenario = .scopeGrowth
+        await waitUntil { held.instrument != nil }
+
+        let heldReading = try XCTUnwrap(held.instrument)
+        XCTAssertEqual(heldReading.scopeDelta, 34, "measured from the Baseline, not from this read")
+        XCTAssertNotEqual(
+            heldReading.baselineCapturedAt, heldReading.readAt,
+            "the scenario keeps the two moments apart, or this test proves nothing"
+        )
+        let heldCaption = try XCTUnwrap(held.baselineCaption)
+        XCTAssertTrue(
+            heldCaption.contains(Self.day(heldReading.baselineCapturedAt)),
+            "the caption dates the Baseline: \(heldCaption)"
+        )
+        XCTAssertFalse(
+            heldCaption.contains(Self.day(heldReading.readAt)),
+            "and not the moment it happened to be re-read: \(heldCaption)"
+        )
+
+        // A Board configured but not yet read: no reading on screen, so no Baseline to date. The
+        // caption belongs to a reading and follows it off, the way the age line does (#12).
+        try configureLive()
+        let unread = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+        XCTAssertNil(unread.baselineCaption)
+    }
+
+    private static func day(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter.string(from: date)
+    }
+
     // MARK: - Editing the Status Map (#13)
 
     /// The arc #13 exists for, on a corpus scenario: a reading that stands, the same status taken
@@ -1173,6 +1301,16 @@ final class PanelModelTests: XCTestCase {
         ("L-1", "In Progress", 5, "dgimaletdinov", "JIRAUSER10500"),
         ("L-2", "Done", 8, "dgimaletdinov", "JIRAUSER10500"),
         ("L-3", "In Progress", 13, "aivanova", "JIRAUSER10877"),
+    ])
+
+    /// The same sprint a day later with one Issue added that belongs to neither the Operator nor
+    /// their forecast: My Work is byte-identical to `myWork`, so the only figure that can move here
+    /// is the sprint's shape — Team Scope 39 against a 26-Point Baseline (#14).
+    private let myWorkWithScopeAdded = issuesJSON([
+        ("L-1", "In Progress", 5, "dgimaletdinov", "JIRAUSER10500"),
+        ("L-2", "Done", 8, "dgimaletdinov", "JIRAUSER10500"),
+        ("L-3", "In Progress", 13, "aivanova", "JIRAUSER10877"),
+        ("L-6", "Open", 13, "psokolov", "JIRAUSER11204"),
     ])
 
     /// The same sprint with a status the shipped map does not know about — 4 Points in "Blocked",

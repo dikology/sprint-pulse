@@ -19,6 +19,11 @@ import Foundation
 /// not because the forecast changed, but because the app has to ask the same question the
 /// forecast asks in order to know whether there is anything to forecast.
 ///
+/// #14 persists what this function already computed, so it asked core for one thing: the reading
+/// carries the Baseline's capture moment beside its Points, since "the sprint has not moved" means
+/// *since when* (#14 AC 6). The value in, the value out, and the absence of I/O are #8's and are
+/// unchanged — the app holds the Baseline, and this function still never learns one was stored.
+///
 /// #12 is the one place M1 touches the table, and only by reaching a rule M0 could not express:
 /// `docs/agents/glossary.md` has always named two triggers for rule 1, and the second — data read
 /// before the current Working Day — needed a cache to exist before it could fire. It arrives as an
@@ -187,6 +192,7 @@ public enum Forecast {
             reading: reading,
             liveSprintPoints: liveSprintPoints,
             baselinePoints: baselinePoints,
+            baselineCapturedAt: updatedBaseline.capturedAt,
             readAt: readAt,
             predatesCurrentWorkingDay: predatesCurrentWorkingDay
         )

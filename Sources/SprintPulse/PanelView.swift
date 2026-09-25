@@ -516,6 +516,16 @@ struct PanelView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         pointsRow("Baseline Points", instrument.baselinePoints)
+        // Which moment that figure belongs to (#14 AC 6). The sentence is the model's, for the same
+        // reason the age line is: it is panel wording worth having under test, and a view function
+        // would not be. Without it a `0` Delta reads as "this sprint has never grown" when all the
+        // app knows is that it has not grown *since the day it arrived*.
+        if let caption = panel.baselineCaption {
+            Text(caption)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
         HStack {
             Text("Scope Delta")
                 .foregroundStyle(.secondary)

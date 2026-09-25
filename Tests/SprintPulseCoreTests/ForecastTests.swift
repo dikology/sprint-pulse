@@ -97,8 +97,10 @@ final class ForecastTests: XCTestCase {
                 // Unestimated and contributes nothing, MOB-1204 is a sub-task and is not an Issue.
                 liveSprintPoints: 28,
                 // First observation: the Baseline is captured from these same Points, so the
-                // sprint has not moved from anything.
+                // sprint has not moved from anything — and the moment it was taken is this read's
+                // own, which is what #14 makes sayable on the panel.
                 baselinePoints: 28,
+                baselineCapturedAt: isoDate("2026-09-08T12:00:00Z"),
                 // #12's two additions, both about the data rather than the sprint: this reading
                 // was taken at the moment its scenario pins, so it is in its own Working Day and
                 // rule 1's stale trigger cannot be what withdrew it.
@@ -399,6 +401,26 @@ final class ForecastTests: XCTestCase {
         )
         XCTAssertEqual(again.baseline, result.baseline)
         XCTAssertEqual(again.instrument, result.instrument)
+    }
+
+    /// AC 6's data, inside the reading itself: the panel has to be able to say *when* the Baseline it
+    /// compares against was taken, because a Delta measured from day six is not one measured from day
+    /// one, and #8's rule is that the panel displays `Instrument`'s fields and derives nothing of its
+    /// own. Two cases, one per branch of the capture rule: a first observation records this moment,
+    /// and a sprint already under observation keeps the day the app actually saw it first.
+    func test_evaluate_carriesTheMomentItsBaselineWasTaken() async throws {
+        let coldStart = try await evaluate("baseline-cold-start").instrument
+        XCTAssertEqual(
+            coldStart.baselineCapturedAt, isoDate("2026-09-08T12:00:00Z"),
+            "this scenario is observed on its sixth Working Day, and the Baseline says which day it saw"
+        )
+
+        let grown = try await evaluate("scope-growth").instrument
+        XCTAssertEqual(
+            grown.baselineCapturedAt, isoDate("2026-09-01T09:05:00Z"),
+            "a held Baseline keeps the moment it was captured, not the moment it was re-read"
+        )
+        XCTAssertEqual(grown.readAt, isoDate("2026-09-08T12:00:00Z"), "while the read stays where it was taken")
     }
 
     /// A sprint entirely `Dropped`: every Issue was cancelled where it sat. That is flow leaving

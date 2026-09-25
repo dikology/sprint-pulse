@@ -39,8 +39,9 @@ the Required Rate, the Demonstrated Rate, and the Confidence State with the one-
 of it — the rule that matched, plus any Cap that demoted the reading, spelled out from the
 numbers underneath. Below them, the sprint's shape: the Team Scope total — every Issue in the
 sprint, dim and secondary, with no forecast ever attached to it — the Points recorded the first
-time the sprint was observed, and the Scope Delta between them — added scope and removed work
-read as different words, not just different signs. The Status Map is the Operator's own
+time the sprint was observed, dated with the moment that observation happened (#14), and the Scope
+Delta between them — added scope and removed work read as different words, not just different
+signs. The Status Map is the Operator's own
 ([ADR-0002](./docs/adr/0002-flow-states-independent-of-jira.md)): every row is a menu over the six
 Flow States, a status can be added or taken out, and the edit is persisted — an `Unmapped Status`
 arrives with a menu beside it and mapping it recomputes the reading on the spot (#13). Nothing on
@@ -136,6 +137,27 @@ was taken — the moment a live read was judged at belongs to that read, and the
 what re-takes the verdict. A better map is not a fresher read. Core gained two value-returning
 operations and a `Codable` conformance, still performs no I/O, and the Confidence table is
 untouched: #13 changed what the map can say, not what the forecast does with it.
+
+The Baseline on a live sprint ([#14](https://github.com/dikology/sprint-pulse/issues/14)) is what
+makes the Scope Delta a fact about the Operator's own Board rather than about the corpus. The
+capture rule was #8's and did not move: the first time the app sees a sprint active, its Issues and
+Estimates become that sprint's Baseline, and from then on the Baseline is fixed. What #14 added is
+where that answer lives and what it is allowed to claim. The slot is filed by sprint id, because one
+Board can report two active sprints and the Operator can name one, then the other, then the first
+again — a single slot would make that sequence destructive, quietly restarting a sprint's Delta at
+zero on a Board the app has watched grow for a week. A relaunch reads the Baseline the first session
+captured, so scope added while the app was shut arrives as movement rather than as a sprint that
+never changed, and a cached read of last week's sprint is measured against last week's Baseline
+rather than whatever the current one happens to be. Core gained no store, no protocol, and no I/O:
+`Forecast.evaluate` takes the Baseline as a value and returns an updated one exactly as before, and
+the reading now carries the moment its Baseline was taken.
+
+That last field is the ticket's honesty requirement, and the glossary has always carried the rule it
+serves: a Sprint Baseline is the sprint's first *observation*, which may fall partway through the
+sprint. Nothing here can tell whether the two coincide — Jira reports a start date, and the app may
+have been pointed at the Board a week after it. So the row beside the Delta names the day and time
+the app arrived, and the `0` under it means nothing has moved *since then*: the claim the instrument
+can actually make, and the one `baseline-cold-start` lets the Operator click and check.
 
 ## Licence
 

@@ -7,7 +7,8 @@ import Foundation
 /// Days Remaining (#5), the rates and Confidence State (#6), the `ConfidenceReading` that
 /// explains them (#7), and the Scope Delta against the Sprint Baseline (#8). #11 widened the
 /// gateway's implementations and no field of the model at all; #12 added the two the cache needs,
-/// which are facts about *when the data was read* rather than about the sprint.
+/// which are facts about *when the data was read* rather than about the sprint, and #14 added a
+/// third — *when* the Baseline the Delta is measured from was taken.
 ///
 /// The one thing the panel needs that is not in here — whether My Work has any subject — it asks
 /// `SprintSnapshot.myWork(assignedTo:)` for, the same call the forecast sums over.
@@ -70,6 +71,17 @@ public struct Instrument: Equatable, Sendable {
     /// equal to `liveSprintPoints` when this is it. Forecast input: never (CONTEXT invariant 9).
     public let baselinePoints: Double
 
+    /// The moment the Baseline above was taken — the first time Sprint Pulse saw *this* sprint active,
+    /// which is the definition of a Baseline and the whole of what the Scope Delta is measured from
+    /// (#14 AC 6).
+    ///
+    /// Carried here rather than worked out at the screen, because it is the fact that keeps a Delta
+    /// honest: an instrument pointed at a sprint on its sixth Working Day has witnessed five days
+    /// nobody asked it about, and the `0` beside it means "nothing has moved since I got here", not
+    /// "nothing has ever moved". Naming the moment is what stops the panel implying a day-one
+    /// snapshot it never took.
+    public let baselineCapturedAt: Date
+
     /// `Scope Delta` — live sprint Points minus Sprint Baseline Points (CONTEXT "Scope Delta").
     /// Positive is added scope, negative is work dropped out of the sprint; the two must read
     /// differently on the panel, and neither is the `Dropped` Flow State, whose Points leave the
@@ -111,6 +123,7 @@ public struct Instrument: Equatable, Sendable {
         reading: ConfidenceReading,
         liveSprintPoints: Double,
         baselinePoints: Double,
+        baselineCapturedAt: Date,
         readAt: Date,
         predatesCurrentWorkingDay: Bool
     ) {
@@ -125,6 +138,7 @@ public struct Instrument: Equatable, Sendable {
         self.reading = reading
         self.liveSprintPoints = liveSprintPoints
         self.baselinePoints = baselinePoints
+        self.baselineCapturedAt = baselineCapturedAt
         self.readAt = readAt
         self.predatesCurrentWorkingDay = predatesCurrentWorkingDay
     }

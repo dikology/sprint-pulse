@@ -168,7 +168,12 @@ _Avoid_: stale data, offline mode, fallback, snapshot (the Sprint Baseline took 
 
 **Sprint Baseline**:
 A snapshot of the Active Sprint's Issues and Estimates, taken the first time Sprint Pulse
-observes the sprint as active. It exists to explain change, never to be forecast against.
+observes the sprint as active. It exists to explain change, never to be forecast against. One is
+held per sprint, and it outlives quitting the app and the Operator naming a different active sprint:
+a sprint's first observation is not something the app is entitled to lose. The Baseline's own moment
+is what the Scope Delta is measured from, and it is shown beside the Delta — a Baseline taken on day
+six is the definition of the term, not a failure to meet it.
+_Avoid_: day-zero snapshot, original shape, drift
 
 **Live Sprint Points**:
 Points over every task-level Issue in the Active Sprint, regardless of assignee — the shape
