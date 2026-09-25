@@ -108,3 +108,18 @@ an agent told to "persist X" defaults to the fresh-install path, and the check t
 re-reading the ticket's own failure mode against the state an upgrade actually starts from — one
 test when the store keeps its key and decodes both shapes. M1 is now one ticket from closing (#15).
 Refs: #14; `Sources/SprintPulse/BaselineStore.swift`; `Tests/SprintPulseAppTests/BaselineStoreTests.swift`; `Sources/SprintPulse/PanelModel.swift`
+
+### 2026-09-25 — M1 closed by a check that was allowed to come back empty
+#15 shipped the fixture/live mode switch and closed M1, but the ticket's real content was the parity
+audit: every one of the 29 corpus scenarios is now served to the live HTTP client as the bytes it was
+written from, and the two `Instrument`s are compared field for field. Not one M0 test needed editing,
+which is the outcome the ticket was written to find out — and the negative result is the deliverable,
+so the suite also proves its own teeth by diverging when the live side is handed a wrong Estimate
+field. The cross-repo claim the series can now make: when a spec pre-commits to "if the live
+integration needs a model change, the seam was drawn wrong", an agent can be pointed at that clause
+as a test to satisfy rather than a claim to restate, and the audit that closes a milestone is allowed
+to report "nothing had to change" — provided the same run also captures the one artifact no test can
+produce (the Operator's real transition graph, anonymised into `fixtures/` while live access was to
+hand) and names the facts in it that only a capture could surface: a transition spelled with a
+leading space, and a `Done` with no way back.
+Refs: #15; `Tests/SprintPulseCoreTests/LiveJiraGatewayTests.swift`; `fixtures/m2-transition-graph.json`; `Sources/SprintPulse/PanelModel.swift`

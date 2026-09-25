@@ -1201,6 +1201,194 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(edited.unestimatedCount, 1, "Escalated joined Actionable unsized, and is counted, not zeroed")
     }
 
+    // MARK: - The mode switch (#15)
+
+    /// AC 1: the whole point of #15 is that fixture mode is reachable *while* a live connection
+    /// stands, because the condition it exists for is reproducing something the Board already
+    /// showed. The credential survives the ask, and the corpus costs no request to go read it.
+    func test_switchingToFixtures_withALiveConnectionStanding_readsTheCorpusAndAsksNothingOfTheBoard() async throws {
+        try configureLive()
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        await model.windowDidAppear()
+        XCTAssertEqual(model.source, .live(boardID: boardID))
+        XCTAssertEqual(reads.count, 1)
+
+        model.switchToFixtures()
+        await waitUntil { model.source == .fixture(model.scenario) }
+
+        XCTAssertEqual(reads.count, 1, "dropping back to a bundled scenario issues no request")
+        XCTAssertTrue(model.hasStoredCredential, "the ask leaves the credential exactly where it was")
+        XCTAssertEqual(try credentials.read(), token, "down to the bytes of the token itself")
+        XCTAssertNil(model.boardID, "and nothing on screen may still claim to be a Board read")
+        XCTAssertNotNil(model.instrument, "the corpus's own reading replaces the Board's")
+        XCTAssertEqual(model.readMode, .fixtures)
+    }
+
+    /// The other direction, and the reason it is a read rather than a re-render: an Operator
+    /// switching back to their Board came for what the Board says now. One request, asked by them,
+    /// which is invariant 14's rule with one more thing the Operator can do (#15).
+    func test_switchingBackToTheBoard_isOneReadTheOperatorAsked() async throws {
+        try configureLive()
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        await model.windowDidAppear()
+        model.switchToFixtures()
+        await waitUntil { model.source == .fixture(model.scenario) }
+
+        model.switchToBoard()
+        await waitUntil { model.source == .live(boardID: self.boardID) }
+
+        XCTAssertEqual(reads.count, 2, "the window open, and this — nothing between them")
+        XCTAssertNotNil(model.instrument)
+        XCTAssertEqual(model.readMode, .automatic)
+    }
+
+    /// The ask is in preferences, not in the panel, because the thing it is for — catching a bug
+    /// that only shows on certain data — survives quitting the app. Relaunching onto a pinned
+    /// corpus must not put the Operator back on the live Board before the bug has reappeared, and
+    /// must still cost no request.
+    func test_theFixtureAskSurvivesARelaunch_andOpensOnTheCorpusWithoutARequest() async throws {
+        try configureLive()
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        model.switchToFixtures()
+        await waitUntil { model.source == .fixture(model.scenario) }
+        XCTAssertEqual(settings.readMode, .fixtures, "written through, not just remembered in memory")
+
+        let relaunched = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        XCTAssertEqual(relaunched.source, .fixture(relaunched.scenario), "the ask, restored at launch")
+
+        await relaunched.windowDidAppear()
+        await wait(seconds: 0.05)
+        XCTAssertEqual(reads.count, 0, "a relaunch onto a pinned corpus asks nothing of the Board")
+        XCTAssertNotNil(relaunched.instrument, "and it opens with a reading on screen, not an empty panel")
+    }
+
+    /// The subtlest thing the switch could break, and the reason the gate is one property rather
+    /// than a check at each call site: while the corpus is what is being read, an answer to a
+    /// prompt belongs to the corpus and is held in memory only (#11). Getting this wrong would let
+    /// a click about somebody else's fixture resolve the Operator's *real* Board's prompt — a
+    /// sprint picked by an act that was never about it.
+    func test_aSprintNamedWhilePinnedToFixtures_isNotTheBoardsAnswer() async throws {
+        try configureLive()
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: twoSprints, issues: myWork), into: reads)
+        model.switchToFixtures()
+        await waitUntil { model.source == .fixture(model.scenario) }
+
+        model.scenario = .twoActiveSprints
+        await waitUntil { model.content.sprintCandidates != nil }
+        model.choose(trackedSprintID: 5312)
+        await waitUntil { model.instrument != nil }
+
+        XCTAssertEqual(model.trackedSprintID, 5312, "honoured while that scenario is the one on screen")
+        XCTAssertNil(
+            settings.trackedSprintID,
+            "a fixture's sprint id is nobody's configuration, however the credential stands (#11)"
+        )
+
+        // Switch back and the real Board still has its own question to ask.
+        model.switchToBoard()
+        await waitUntil { model.source == .live(boardID: self.boardID) }
+        XCTAssertNotNil(model.content.sprintCandidates, "the Board asks about itself, unanswered")
+    }
+
+    /// AC 2: #15 must not quietly make the Operator click something before they can see a reading.
+    /// With no credential there is nothing to switch away from and nothing to switch back to, so
+    /// the panel is on the corpus by the credential's own rule and both controls are absent — a
+    /// button that changes nothing is not an affordance.
+    func test_withNoCredentialTheCorpusIsStillTheDefault_andThereIsNothingToSwitch() async throws {
+        let reads = Reads()
+        let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        await waitUntil { model.instrument != nil }
+
+        XCTAssertEqual(model.readMode, .automatic, "nobody had to ask")
+        XCTAssertEqual(model.source, .fixture(model.scenario))
+        XCTAssertFalse(model.canSwitchToFixtures, "the corpus is already what is read")
+        XCTAssertNil(model.configuredBoardID, "and there is no Board to go to")
+        XCTAssertEqual(reads.count, 0)
+
+        // Asking anyway is inert rather than contradictory: the ask still resolves through the
+        // credential's rule, so a pinned panel with nothing to pin to keeps reading the corpus.
+        model.switchToFixtures()
+        await wait(seconds: 0.05)
+        XCTAssertEqual(model.source, .fixture(model.scenario))
+        XCTAssertNil(model.configuredBoardID)
+        XCTAssertEqual(reads.count, 0)
+    }
+
+    /// #12's drawer and #14's Baseline slot are protected by *source*, not by whether a credential
+    /// happens to exist: a fixture read writes neither. That has to stay true when the fixture read
+    /// was reached over a standing credential, or clicking through the corpus to reproduce a bug
+    /// would restart the Operator's own Scope Delta and bury their last good read — the exact two
+    /// destructions those tickets exist to prevent, arriving through a new door.
+    func test_aPinnedFixtureRead_writesNeitherTheCacheNorTheBaseline() async throws {
+        try configureLive()
+        let reads = Reads()
+        let live = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        await live.windowDidAppear()
+        let storedCache = try XCTUnwrap(cache.load())
+        let storedBaseline = try XCTUnwrap(baselines.load(sprintID: 1))
+
+        live.switchToFixtures()
+        await waitUntil { live.source == .fixture(live.scenario) }
+        live.scenario = .capBoth
+        await waitUntil { live.instrument != nil }
+        live.scenario = .cachePredatesWorkingDay
+        await waitUntil { live.instrument?.confidenceState == .unknown }
+
+        XCTAssertEqual(reads.count, 1, "one read for the whole excursion, and it was the first one")
+        XCTAssertEqual(cache.load(), storedCache, "the Board's last good read survived the browsing")
+        XCTAssertEqual(baselines.load(sprintID: 1), storedBaseline, "and so did the Operator's Baseline")
+        XCTAssertNil(live.dataReadAt, "a bundled scenario is not a fetch, so it has no age to state")
+    }
+
+    /// AC 5 in its sharpest form: the same scenario through the same entry point gives the same
+    /// reading whichever way the panel got there, and while pinned that reading is about the
+    /// corpus's own Operator. Naming the identity `/myself` resolved would attribute a bundled
+    /// scenario's work to a person it was never written about.
+    func test_theSameScenarioReadsIdenticallyPinnedAndUnpinned_andKeepsTheCorpusOperator() async throws {
+        let reads = Reads()
+        let unpinned = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        unpinned.scenario = .severalAssignees
+        await waitUntil { unpinned.instrument != nil }
+        let plainReading = try XCTUnwrap(unpinned.instrument)
+
+        try configureLive()
+        let pinned = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: reads)
+        pinned.switchToFixtures()
+        pinned.scenario = .severalAssignees
+        await waitUntil { pinned.instrument != nil }
+
+        XCTAssertEqual(pinned.instrument, plainReading, "one entry point, one reading")
+        XCTAssertEqual(pinned.readingIdentity, unpinned.readingIdentity)
+        XCTAssertEqual(pinned.menuBarLabel, unpinned.menuBarLabel)
+        XCTAssertNil(pinned.boardID, "and the reading carries no Board's caption")
+        XCTAssertEqual(reads.count, 0, "nor any part of it cost a request")
+    }
+
+    /// A failure sentence belongs to the connection it was about. Switching away retires it with
+    /// the reading: the panel going on to say the Board could not be reached, while reading a
+    /// bundled scenario nobody asked a Board about, is the panel complaining about a connection
+    /// nobody is asking anything of.
+    func test_switchingToFixturesClearsAFailureLeftStandingByTheBoard() async throws {
+        try configureLive()
+        let model = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await model.windowDidAppear()
+        XCTAssertEqual(model.readProblem, JiraClientError.unreachableHost(host: "jira.example.com").message)
+        XCTAssertEqual(model.content, .nothing, "nothing had been read, so nothing was left standing")
+
+        model.switchToFixtures()
+        await waitUntil { model.instrument != nil }
+
+        XCTAssertNil(model.readProblem, "the corpus answers, and the Board's bad news retires with it")
+        XCTAssertTrue(model.hasStoredCredential, "and none of this touched the credential")
+    }
+
     // MARK: - Helpers
 
     private func makeModel(reading: Reading, into reads: Reads) -> PanelModel {

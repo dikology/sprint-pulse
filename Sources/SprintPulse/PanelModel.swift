@@ -20,15 +20,18 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 ///
 /// Two sources, one protocol (#11): `FixtureJiraGateway` and `LiveJiraGateway` satisfy the same
 /// `JiraGateway`, so everything below the gateway is the same code path producing the same
-/// `Instrument`. Which one is in use is the Operator's business, not the domain's.
+/// `Instrument`. Which one is in use is the Operator's business, not the domain's — and #15 makes
+/// it explicitly theirs: the panel can be put back on the corpus while a credential stands and
+/// taken off it again, and neither act reaches the domain or the credential at all.
 ///
 /// When a read happens (#11): a live fetch runs when the panel window opens, when the Operator
 /// presses Refresh, and when they change the connection they want read — a Board remembered, a
-/// credential resolved or revoked. There is no timer and no polling anywhere in the app, and no
-/// live read at launch. A fixture read issues no request at all, which is why the picker can keep
-/// loading on click. Editing the Status Map (#13) is neither: it asks nothing of the Board and
-/// re-judges the data already on screen, so mapping a status restores a forecast on the click
-/// rather than at the next Refresh.
+/// credential resolved or revoked, or the panel switched back from the corpus to their Board
+/// (#15). There is no timer and no polling anywhere in the app, and no live read at launch. A
+/// fixture read issues no request at all, which is why the picker can keep loading on click.
+/// Editing the Status Map (#13) is neither: it asks nothing of the Board and re-judges the data
+/// already on screen, so mapping a status restores a forecast on the click rather than at the next
+/// Refresh.
 ///
 /// What a read leaves on screen when it fails (#12): the last read that succeeded, with its age
 /// against it. Being off the VPN is this milestone's ordinary condition, so the cache is not a
@@ -40,8 +43,9 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 final class PanelModel: ObservableObject {
     /// Where the panel's reading comes from, for the caption and for what a read is allowed to do.
     enum Source: Equatable {
-        /// The bundled corpus, chosen by the picker. The reading whenever the app has no complete
-        /// live configuration (#10, #11).
+        /// The bundled corpus, chosen by the picker: the reading whenever the app has no complete
+        /// live configuration (#10, #11), and also the reading whenever the Operator asks for it
+        /// with a complete one standing (#15).
         case fixture(FixtureScenario)
         /// One Board, over HTTP, and the read that filled this in got through — a reading, or a
         /// Board state like the active-sprint prompt. Not a claim that a forecast is on screen.
@@ -100,6 +104,15 @@ final class PanelModel: ObservableObject {
 
     @Published private(set) var source: Source = .fixture(.walkingSkeleton)
     @Published private(set) var content: Content = .nothing
+
+    /// The Operator's own ask about where the panel reads (#15), restored from preferences at
+    /// launch. `.automatic` is the *absence* of an ask, so a first launch — and every launch with
+    /// no credential — reads the corpus (#10, #11); `.fixtures` holds the panel on the corpus over
+    /// a standing credential, which is the whole of "drop back to fixtures to reproduce a bug".
+    ///
+    /// Published, and persisted, because both halves of the ask are things the panel has to say:
+    /// which source is on screen now, and which one the switch control would put there.
+    @Published private(set) var readMode: ReadMode
 
     /// The moment the data behind whatever is on screen was read, and which Board it was read from
     /// — `nil` and `nil` together when nothing on screen came from a fetch at all. The panel's age
@@ -244,9 +257,10 @@ final class PanelModel: ObservableObject {
         self.cache = cache
         self.statusMapStore = statusMaps
         self.statusMap = statusMaps.load()
+        self.readMode = settings.readMode
         self.liveGateway = liveGateway
 
-        if let configuration = liveConfiguration {
+        if let configuration = liveRead {
             // A live Board is not read at launch: the first fetch waits for the window to open
             // (#11). Nothing is read from the cache at launch either — the cache is what the panel
             // shows *when* the window opens, before the fetch has had a chance to fail (#12).
@@ -303,7 +317,7 @@ final class PanelModel: ObservableObject {
     /// The Active Sprint the Operator named when the Board reported several, for the prompt's
     /// selection. `nil` until they answer it, and scoped to whichever source is being read (#11).
     var trackedSprintID: Int? {
-        liveConfiguration == nil ? fixtureSprintChoice : settings.trackedSprintID
+        liveRead == nil ? fixtureSprintChoice : settings.trackedSprintID
     }
 
     /// Whose work the reading on screen is about — the corpus's Operator in fixture mode, the
@@ -311,13 +325,18 @@ final class PanelModel: ObservableObject {
     /// identity can produce, No Work Assigned and a reading that looks fine, are told apart by
     /// nobody except the person whose name it matched.
     var readingIdentity: OperatorIdentity {
-        liveConfiguration?.identity ?? fixtureIdentity
+        liveRead?.identity ?? fixtureIdentity
     }
 
-    /// The configuration a live read needs: a stored credential, the base URL and identity that
-    /// came with it, and a Board. Absent any one of them and the panel reads fixtures — a
+    /// The configuration a live read *could* use: a stored credential, the base URL and identity
+    /// that came with it, and a Board. Absent any one of them there is no live read to be had — a
     /// credential with no Board is not half a live read, it is a live read with nothing to ask
     /// about (#11).
+    ///
+    /// Deliberately blind to the Operator's #15 ask, because this is the question the switch
+    /// control asks: "is there a Board to put you back on?" A pinned panel still has one, and a
+    /// control that answered that question from `liveRead` would vanish at the moment it was most
+    /// needed. Use `liveRead` to decide what a read *is*.
     var liveConfiguration: JiraLiveConfiguration? {
         guard let identity = settings.identity,
               let baseURLString = settings.baseURLString,
@@ -333,6 +352,31 @@ final class PanelModel: ObservableObject {
         )
     }
 
+    /// The live read the panel is actually performing: `liveConfiguration` unless the Operator has
+    /// put the panel back on the corpus (#15).
+    ///
+    /// Every branch that decides what a read is goes through here — the launch state, the
+    /// window-open fetch, whose identity the reading is about, and where a sprint answer belongs —
+    /// so a pinned panel cannot leak into any of them by being halfway pinned. In particular, the
+    /// rule that a fixture's sprint id is nobody's configuration (#11) holds here unchanged: while
+    /// the corpus is what is being read, an answer about it is held in memory only.
+    private var liveRead: JiraLiveConfiguration? {
+        readMode == .fixtures ? nil : liveConfiguration
+    }
+
+    /// The Board a #15 switch would go back to, and whether there is one at all — read off the
+    /// connection, not off `source`. `boardID` answers "which Board is this reading from?" and is
+    /// `nil` while the corpus is on screen; the switch control has to keep answering the other
+    /// question while the panel is deliberately not reading that Board.
+    var configuredBoardID: Int? { liveConfiguration?.boardID }
+
+    /// Whether the Operator can drop back to the corpus at all (#15) — which is the same question
+    /// as "is a live read what the panel is doing", because the ask only means anything while there
+    /// is something to ask away from. There is no control for it while the corpus is already what
+    /// the credential decides to read, since pressing a button that changes nothing is not an
+    /// affordance.
+    var canSwitchToFixtures: Bool { liveRead != nil }
+
     /// Whether the Keychain holds a credential at all (#10). Presence is counted, not read:
     /// nothing here needs the token's bytes.
     var hasStoredCredential: Bool {
@@ -340,9 +384,10 @@ final class PanelModel: ObservableObject {
     }
 
     /// The panel window appeared: the first of the moments a live read happens (#11). A fixture
-    /// panel is not re-read for it — the reading is already on screen and no request is waiting.
+    /// panel is not re-read for it — the reading is already on screen and no request is waiting,
+    /// and since #15 that includes a Board the Operator has deliberately walked away from.
     func windowDidAppear() async {
-        guard liveConfiguration != nil else { return }
+        guard liveRead != nil else { return }
         await load()
     }
 
@@ -352,13 +397,48 @@ final class PanelModel: ObservableObject {
         await load()
     }
 
+    /// The Operator put the panel back on the bundled corpus with their credential untouched
+    /// (#15) — the ask this ticket exists for, so a state the Board showed once can be put on
+    /// screen whenever it is wanted.
+    ///
+    /// Nothing is revoked, nothing is fetched, and nothing is written to the drawer or the
+    /// Baseline slot: `load`'s fixture branch clears the Board's caption and age line with it, and
+    /// a fixture read persists neither. A standing failure sentence goes too — it was about a
+    /// Board the panel has stopped reading, and leaving it up would be the panel complaining about
+    /// a connection nobody is asking anything of.
+    func switchToFixtures() {
+        setReadMode(.fixtures)
+    }
+
+    /// The Operator asked for their Board again (#15). This is a live read they initiated, on the
+    /// same standing as pressing Refresh or remembering a Board (#11, invariant 14): they came for
+    /// what the Board says now, and leaving the corpus's reading on screen under a Board's caption
+    /// is the rebranding #12 already refuses.
+    ///
+    /// The ask resolves back to the corpus if the connection is no longer complete — the credential
+    /// may have been revoked while the panel sat on a scenario — so this never leaves the panel
+    /// claiming a Board it cannot read. The control that calls it is only shown when there is one.
+    func switchToBoard() {
+        setReadMode(.automatic)
+    }
+
+    /// One place where an ask is written *and* acted on, so neither direction of the switch can
+    /// forget the reload or write preferences the panel then ignores. Re-asking for the mode
+    /// already in force is a no-op rather than a second read.
+    private func setReadMode(_ mode: ReadMode) {
+        guard readMode != mode else { return }
+        readMode = mode
+        settings.readMode = mode
+        Task { await load() }
+    }
+
     /// The Operator named the sprint being tracked (#11). In live mode the answer is persisted
     /// for the life of that sprint — `SprintSnapshot.resolveTrackedSprint` stops honouring the id
     /// once it is no longer active. In fixture mode it is held for the length of the browsing
     /// session and nothing longer. Either way this is the only way a sprint id enters the app:
     /// nothing is ever inferred.
     func choose(trackedSprintID: Int) {
-        if liveConfiguration != nil {
+        if liveRead != nil {
             settings.trackedSprintID = trackedSprintID
         } else {
             fixtureSprintChoice = trackedSprintID
@@ -367,7 +447,8 @@ final class PanelModel: ObservableObject {
     }
 
     /// Reads the configured source. Both branches go through the same gateway protocol, the same
-    /// snapshot resolution, and the same `Forecast.evaluate`.
+    /// snapshot resolution, and the same `Forecast.evaluate` — which is the whole claim #15 is
+    /// asked to verify, and the reason switching is a re-read rather than a different app.
     ///
     /// A live read *begins* with the cached one (#12), before the request is made: off the VPN a
     /// fetch can spend its whole timeout discovering that there is nothing to reach, and the
@@ -376,7 +457,7 @@ final class PanelModel: ObservableObject {
     /// failure named beside it. `loadLive` claims `.live` for itself once the Board has answered,
     /// so the caption never says "Live" over a reading the fetch has not produced yet.
     func load() async {
-        if let configuration = liveConfiguration {
+        if let configuration = liveRead {
             showCachedRead(of: configuration)
             await read { try await self.loadLive(configuration) }
         } else {

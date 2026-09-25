@@ -1,11 +1,32 @@
 import Foundation
 import SprintPulseCore
 
+/// What the Operator has asked the panel to read (#15).
+///
+/// Named for `CONTEXT.md`'s **Fixture Mode**, and deliberately not `Source`: `PanelModel.Source`
+/// is where the reading on screen actually came from, which is a fact about a read, while this is
+/// an ask about the next one. They can disagree — a Board configured and a panel reading a scenario
+/// — and collapsing them into one word is how that disagreement stops being visible.
+///
+/// An ask, not a fact about the connection: it says nothing about whether a credential exists,
+/// only about what the Operator wants on screen while one does. Stored in preferences rather than
+/// held in the panel, because the thing it is for — dropping back to a bundled scenario to
+/// reproduce a bug — survives quitting the app and reopening it, and a mode that reset on relaunch
+/// would put the Operator back on the live Board before the bug they came to catch had appeared.
+enum ReadMode: String {
+    /// Nobody asked, so the credential decides: the configured Board when the connection is
+    /// complete, the bundled corpus while it is not (#10, #11). The default, and the reason first
+    /// launch presents no authentication wall.
+    case automatic
+    /// The bundled corpus, whatever the credential holds (#15).
+    case fixtures
+}
+
 /// The non-secret half of the Jira connection: the base URL and Board the Operator configured,
 /// the sprint they named when the Board reported several, the Estimate field their instance keeps
-/// its numbers in, and the identity Jira resolved at setup (#10, #11). All ordinary preferences —
-/// safe to store in `UserDefaults`, safe to show on screen, safe to survive a credential removal
-/// (the URL is configuration, not a secret).
+/// its numbers in, the identity Jira resolved at setup (#10, #11), and which source the Operator
+/// asked to be read (#15). All ordinary preferences — safe to store in `UserDefaults`, safe to
+/// show on screen, safe to survive a credential removal (the URL is configuration, not a secret).
 ///
 /// The Personal Access Token is *not* stored here and this type has no way to store it: there
 /// is no property, key, or writer that takes one. That is the shape of the acceptance
@@ -19,6 +40,7 @@ struct JiraSettingsStore {
     private let boardIDKey = "jira-board-id"
     private let trackedSprintIDKey = "jira-tracked-sprint-id"
     private let estimateFieldIDKey = "jira-estimate-field-id"
+    private let readModeKey = "jira-read-mode"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -117,6 +139,27 @@ struct JiraSettingsStore {
                 defaults.set(newValue, forKey: estimateFieldIDKey)
             } else {
                 defaults.removeObject(forKey: estimateFieldIDKey)
+            }
+        }
+    }
+
+    // MARK: - Which source the Operator asked to be read (#15)
+
+    /// The Operator's own ask about what the panel reads, kept beside the rest of the connection
+    /// rather than inside the panel, so dropping back to the corpus outlives a relaunch.
+    ///
+    /// `.automatic` is written as *nothing*: an absent key and an explicit "the credential decides"
+    /// are one state, which is what keeps a fresh install's fixture default from being a value
+    /// somebody had to set. A stored string that is not one of the two asks reads as no ask at
+    /// all — preferences are user-editable, and the alternative is a panel reading nothing because
+    /// of a word nobody should have typed into a plist.
+    var readMode: ReadMode {
+        get { defaults.string(forKey: readModeKey).flatMap(ReadMode.init(rawValue:)) ?? .automatic }
+        nonmutating set {
+            if newValue == .automatic {
+                defaults.removeObject(forKey: readModeKey)
+            } else {
+                defaults.set(newValue.rawValue, forKey: readModeKey)
             }
         }
     }

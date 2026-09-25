@@ -14,6 +14,8 @@ for what it is and why, and [`docs/adr/`](./docs/adr/) for the decisions.
 | `Sources/SprintPulseCore/` | The domain model, the forecast, and the Jira gateway. Builds without SwiftUI ([ADR-0005](./docs/adr/0005-standalone-app-not-a-boring-notch-fork.md)). |
 | `Sources/SprintPulseCore/Fixtures/` | The fixture corpus: JSON in the exact shape of Jira Data Center responses, one directory per sprint scenario. |
 | `Sources/SprintPulse/` | The macOS menu-bar app. A thin view layer holding platform and persistence concerns. |
+| `fixtures/` | Captured from a live instance and anonymised, but deliberately *not* corpus scenarios: nothing in M0 or M1 reads it, and it is not a state to click. The raw form lives in `captures/`, which is gitignored. |
+| `scripts/` | The one command that cannot be a test — re-capturing the live transition graph behind `fixtures/`. |
 | `Tests/SprintPulseCoreTests/` | Domain tests, run against fixtures with a pinned date. |
 | `Tests/SprintPulseAppTests/` | The app's own seams: the single Keychain item, the preferences store, and the setup flow that persists through them. Still no network — the identity probe is injected, as the transport is on the core side. |
 
@@ -28,9 +30,18 @@ With no credential, or a credential with no Board yet, the panel reads the fixtu
 a scenario picker at the top lists every state the instrument can reach, each read at the moment
 that scenario pins for itself, so everything below is explorable by clicking before anything is
 authenticated. Configure a base URL, a Personal Access Token, and one Board and the panel reads
-that Board's live sprint instead — the same gateway protocol, the same forecast, no scenario
-picker until the credential goes away (#15 adds the switch back). When the Board cannot be reached
-the panel keeps showing the last read that got through, labelled as cached and dated (#12).
+that Board's live sprint instead — the same gateway protocol, the same forecast. When the Board
+cannot be reached the panel keeps showing the last read that got through, labelled as cached and
+dated (#12).
+
+The two are switchable, and the switch is one click in each direction with the credential left in
+place (#15): "Read fixtures instead" from a live Board, "Read Board N" from the picker. Fixture
+mode is still what a fresh install does — nobody has to ask for it — and asking for it is
+remembered across launches, because the thing it is for is catching a bug that only shows on
+certain data, and that survives quitting the app. Whichever way the reading came, the corpus and
+the Board are the same program: every bundled scenario is served to the live client as the bytes it
+was written from and the two readings are compared field for field, so the whole M0 corpus is
+re-verified against the live path on every test run rather than only against itself.
 
 The reading shows Points per Flow State for the Active Sprint's My Work: Actionable and Waiting as
 separate totals, Completed and Dropped as their own figures, a count of Unestimated Issues,
@@ -158,6 +169,39 @@ sprint. Nothing here can tell whether the two coincide — Jira reports a start 
 have been pointed at the Board a week after it. So the row beside the Delta names the day and time
 the app arrived, and the `0` under it means nothing has moved *since then*: the claim the instrument
 can actually make, and the one `baseline-cold-start` lets the Operator click and check.
+
+The mode switch ([#15](https://github.com/dikology/sprint-pulse/issues/15)) closes M1, and it is
+deliberately small: one control each way, "Read fixtures instead" beside Refresh and "Read Board N"
+beside the picker, with the credential never touched. The ask is stored beside the rest of the
+connection, so an excursion taken to catch a bug survives quitting the app and does not put the
+Operator back on the live Board before the bug has reappeared — and fixture mode is still what a
+fresh install does, with nobody having to ask for it. Two older rules had to survive the new door
+rather than be re-stated near it: an answer given to a fixture's prompt is still nobody's
+configuration, however completely the credential is configured, and a corpus read reached over a
+standing Board still writes neither the cache drawer nor the Baseline slot.
+
+The corpus check is what the ticket was actually for. Every scenario in the corpus — all 29 — is
+now served to the live client as the bytes it was written from, so the same Board envelope and the
+same Issue listing travel the HTTP path, get paged and stitched and decoded by `JiraHTTPClient`,
+and come out the other side as an `Instrument` compared field for field against the one the fixture
+path produced from those same files. Every row agrees, and not one M0 test was edited to make it
+so: that is the answer to the question #2 asked before any write was built on top of the boundary,
+and it is checked on every run rather than asserted in a sentence. The comparison is checked for
+having teeth, too — a second test points the live path alone at an Estimate field the corpus does
+not keep its numbers in and requires the readings to part company, because two paths decoded
+wrongly in the same way would agree happily.
+
+The one thing that could not be a test is in `fixtures/m2-transition-graph.json`: the Operator's
+real transition graph, captured from all 84 Issues of a live sprint while the VPN and the credential
+were both to hand, anonymised, and read by nothing in this milestone. M2's confirmation rule is
+derived from it — an Intent needs confirming exactly when no transition returns — and the capture is
+already informative before that rule exists: `Done` offers one transition, `Reopen`, and it lands in
+`Open` rather than back in `In Review` — so a move to `Done` has no single step back, which is what
+M2's rule counts, and that Intent is confirmation-required. (Three steps through `Open` and
+`In Progress` gets there; reachable is not the same as reversible.) The move into `In Progress` is
+spelled `' In Progress'`, with a leading space, when `Open` and `In Review` offer it and without one
+when `Need Info` and `On hold` do, which is the shape of the problem M2's resolution has to survive.
+`scripts/capture-transition-graph.sh` re-runs the capture when the workflow moves.
 
 ## Licence
 

@@ -342,6 +342,160 @@ final class LiveJiraGatewayTests: XCTestCase {
         XCTAssertEqual(fromLive.liveSprintPoints, 43)
     }
 
+    // MARK: - The corpus-wide parity check (#15)
+
+    /// The whole corpus, not one scenario: every bundled scenario is served to the live client as
+    /// the bytes it was written from, and both paths must agree field for field. #11 proved this
+    /// for `several-assignees`; one scenario proves the decoder runs, and only all of them prove
+    /// the protocol boundary is wide enough to stand on before writes are built on top of it (#2).
+    ///
+    /// This is the check whose *negative* result is the deliverable, so it compares the two paths
+    /// against each other and against nothing else — no promised Confidence State is restated
+    /// here, because `FixtureCorpusTests` already owns that table and a second copy of it would be
+    /// a second thing to drift. (#15's own acceptance criterion is that no M0 test was edited to
+    /// make this pass, which is why the two values this loop has to share with that file — the
+    /// corpus's Operator and the one answered sprint prompt — are re-declared here rather than
+    /// lifted into a shared helper: doing that would mean editing the M0 audit.)
+    ///
+    /// Each row carries its own `now`, `readAt`, and Baseline, read from the scenario's own
+    /// `now.json`, `read-at.json` and `baseline.json` — the three app-owned values that never
+    /// cross the gateway boundary (product.md, "Fixtures"). They reach both paths identically,
+    /// because they are what the app would have supplied in live mode from its cache and its
+    /// Baseline slot. Only the two Jira envelopes travel by different routes.
+    func test_everyScenario_theLivePathProducesTheSameReadingAsTheFixturePath() async throws {
+        for scenario in FixtureScenario.allCases {
+            let (fromLive, fromFixture) = try await readEveryScenarioBothWays(scenario)
+            XCTAssertEqual(
+                fromLive, fromFixture,
+                "\(scenario.rawValue): the two gateways disagree — the protocol boundary is in the wrong place"
+            )
+        }
+    }
+
+    /// The comparison above is only evidence if it can fail, and two paths that are both wrong the
+    /// same way would agree happily. So the harness is checked the way #11's decode is: point the
+    /// live path at an Estimate field the corpus does not keep its numbers in — the single
+    /// configuration a real instance forces the Operator to get right (#11) — and require the two
+    /// readings to part company. A parity test that passes while this one fails is a parity test
+    /// comparing a decoder with itself.
+    func test_theParityComparisonHasTeeth_misConfiguringOnlyTheLivePathBreaksIt() async throws {
+        var diverging: [String] = []
+        for scenario in FixtureScenario.allCases {
+            let sprints = try fixtureFile(scenario.rawValue, "active-sprints.json")
+            let issues = try fixtureFile(scenario.rawValue, "sprint-issues.json")
+            let tracked = try trackedSprint(of: scenario, in: sprints)
+            let live = try gateway(
+                RecordedJiraTransport(pages: [
+                    "rest/agile/1.0/board/\(boardID)/sprint": [sprints],
+                    "rest/agile/1.0/sprint/\(tracked.id)/issue": [issues],
+                ]),
+                estimateFieldID: "customfield_10007"  // not the field the corpus estimates in
+            )
+            let fixture = try FixtureJiraGateway.bundled(scenario)
+            if try await readThrough(live, scenario) != readThrough(fixture, scenario) {
+                diverging.append(scenario.rawValue)
+            }
+        }
+        XCTAssertFalse(
+            diverging.isEmpty,
+            "nothing diverged, so the parity comparison is not actually reading two paths"
+        )
+    }
+
+    /// Reads one scenario through both gateways from the same bytes, and checks on the way that
+    /// the live path asked exactly what #2 bounded it to ask.
+    private func readEveryScenarioBothWays(
+        _ scenario: FixtureScenario
+    ) async throws -> (live: Instrument, fixture: Instrument) {
+        let sprints = try fixtureFile(scenario.rawValue, "active-sprints.json")
+        let issues = try fixtureFile(scenario.rawValue, "sprint-issues.json")
+
+        // Which Issue listing the live client asks for is decided by which sprint the Board's own
+        // envelope resolves to, so the recorded path is keyed on the resolved id rather than on a
+        // number this test would have to keep in step with the corpus by hand. Asking the live
+        // client to resolve it from the same bytes is the point: had the id come from the fixture
+        // side instead, the transport would have confirmed an answer it was handed.
+        let tracked = try trackedSprint(of: scenario, in: sprints)
+        let transport = RecordedJiraTransport(pages: [
+            "rest/agile/1.0/board/\(boardID)/sprint": [sprints],
+            "rest/agile/1.0/sprint/\(tracked.id)/issue": [issues],
+        ])
+        let live = try gateway(transport)
+        let fixture = try FixtureJiraGateway.bundled(scenario)
+
+        let fromLive = try await readThrough(live, scenario)
+        let fromFixture = try await readThrough(fixture, scenario)
+
+        XCTAssertEqual(
+            transport.requests.count, 2,
+            "\(scenario.rawValue): more than two requests means the corpus holds a page the live client would keep walking"
+        )
+        XCTAssertEqual(
+            Set(transport.requests.map { $0.httpMethod ?? "<unset>" }), ["GET"],
+            "\(scenario.rawValue): the live path reached for something other than a GET"
+        )
+        return (fromLive, fromFixture)
+    }
+
+    /// The sprint a scenario's Board envelope resolves to, for the path its Issue listing is
+    /// recorded under.
+    private func trackedSprint(
+        of scenario: FixtureScenario, in sprints: JiraHTTPResponse
+    ) throws -> JiraSprint {
+        let response = try JiraDecoding.decoder().decode(
+            JiraSprintsResponse.self, from: sprints.body
+        )
+        return try XCTUnwrap(
+            SprintSnapshot.resolveTrackedSprint(
+                in: response, chosenSprintID: Self.chosenSprint(for: scenario)
+            ).sprint,
+            "\(scenario.rawValue): the corpus expects a tracked sprint"
+        )
+    }
+
+    /// One scenario's reading, evaluated with the app-owned values that never cross the gateway:
+    /// the corpus's Operator, the shipped map, the scenario's pinned moment, its own `readAt` when
+    /// it carries one, and its bundled Baseline when it carries that. Identical for both paths —
+    /// only the gateway differs, which is the whole of what is being compared.
+    private func readThrough(
+        _ gateway: any JiraGateway, _ scenario: FixtureScenario
+    ) async throws -> Instrument {
+        let moment = try XCTUnwrap(
+            FixtureJiraGateway.pinnedNow(scenario), "\(scenario.rawValue): no pinned moment"
+        )
+        let readAt = try FixtureJiraGateway.bundledReadAt(scenario) ?? moment
+        let baseline = try FixtureJiraGateway.bundledBaseline(scenario)
+        let choice = SprintSnapshot.resolveTrackedSprint(
+            in: try await gateway.activeSprints(),
+            chosenSprintID: Self.chosenSprint(for: scenario)
+        )
+        let tracked = try XCTUnwrap(choice.sprint)
+        let listing = try await gateway.issues(inSprint: tracked.id)
+        return Forecast.evaluate(
+            snapshot: SprintSnapshot(sprint: tracked, issues: listing.issues),
+            identity: operatorIdentity,
+            statusMap: .default,
+            workingCalendar: WorkingCalendar(timeZone: TimeZone(identifier: "UTC")!),
+            baseline: baseline,
+            readAt: readAt,
+            now: moment
+        ).instrument
+    }
+
+    /// The Operator every scenario is written against — restated from `FixtureCorpusTests`, whose
+    /// copy is private to that file and whose file this ticket may not edit.
+    private let operatorIdentity = OperatorIdentity(
+        key: "JIRAUSER10500", name: "dgimaletdinov"
+    )
+
+    /// The Operator's answer for the one scenario whose Board reports two active sprints, and no
+    /// answer for any other. Restated from `FixtureCorpusTests` for the same reason as the identity
+    /// above — and `FixtureCorpusTests` staying green is what stops this drifting: if that
+    /// scenario's expected sprint changes, the audit fails before this loop silently follows.
+    private static func chosenSprint(for scenario: FixtureScenario) -> Int? {
+        scenario == .twoActiveSprints ? 5311 : nil
+    }
+
     // MARK: - Helpers
 
     /// Runs both gateway reads against the transport and hands back whatever `JiraClientError`

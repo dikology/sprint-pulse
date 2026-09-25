@@ -136,8 +136,10 @@ simply absent — the same rule as an Intent with no legal transition.
 ## Fixtures
 
 Fixtures are JSON in the exact shape of Jira Data Center's responses, served through the same
-gateway as the live client. `SprintPulseCore` cannot tell which it is talking to. Three
-deliberate exceptions, all of them the app's own values rather than something Jira returns,
+gateway as the live client. `SprintPulseCore` cannot tell which it is talking to — and since #15
+that is checked rather than claimed: every scenario in the corpus is served to the live client as
+the bytes it was written from, and the two readings are compared field for field on every test run.
+Three deliberate exceptions, all of them the app's own values rather than something Jira returns,
 part of the scenario but never passing through the gateway: a Scope Delta scenario also carries
 `baseline.json`, the stored Sprint Baseline in the app's own JSON (#8); every scenario
 pins the moment it is read at in `now.json` — a fixture is a *frozen observation*, and read
@@ -147,7 +149,12 @@ State than the scenario is named for (#9); and a cache scenario pins beside thos
 scenarios (#12).
 
 Fixture mode is the **default whenever no credential exists**, so the app is fully explorable
-before anything is authenticated. The panel's scenario picker (#9) lists the whole corpus, so
+before anything is authenticated — and it stays **selectable** after one exists (#15). The Operator
+can put the panel back on a bundled scenario with their credential and Board untouched, and take it
+off again, because the state worth reproducing is usually one the Board already showed. The ask is
+persisted, so it survives the relaunch that reproducing a bug tends to involve. The default is not a
+stored value: nobody has to ask to be in fixture mode, and where the switch would change nothing it
+is not shown. The panel's scenario picker (#9) lists the whole corpus, so
 every reachable state is reachable by clicking; the picker's list is pinned to the fixture
 directories by a test, which is also where the corpus is audited against the scenario list — a
 fixture without a test, or a scenario the picker cannot load, fails the suite rather than
@@ -192,7 +199,7 @@ full sprint.
 | Milestone | Contents | In MVP |
 | --- | --- | --- |
 | **M0** — the instrument, offline | `SprintPulseCore` (Flow States, Status Map, forecast, Confidence States, Caps); the fixture corpus; a menu-bar panel showing Points by Flow State, Working Days Remaining, Required Rate, Demonstrated Rate, Confidence State with a one-line explanation, and the unestimated / dropped / Scope Delta lines. No Jira. | ✅ |
-| **M1** — live reads | Keychain PAT, base URL and board config, `/myself` identity, live sprint and issue fetch, cache with age stamp, `Unknown` on stale, Status Map editor. | ✅ |
+| **M1** — live reads | Keychain PAT, base URL and board config, `/myself` identity, live sprint and issue fetch, cache with age stamp, `Unknown` on stale, Status Map editor, Baseline persisted per sprint, fixture/live mode switch. | ✅ |
 | **M2** — writes | Per-issue legal transitions, the three Intents, reversibility-derived confirmation, undo. | ❌ |
 | **M3** — the mascot | Terrain and weather states, change-only animation, reduced-motion handling. | ❌ |
 

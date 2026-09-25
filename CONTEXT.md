@@ -103,6 +103,16 @@ An Intent is resolved against the transitions Jira currently offers for that Iss
 with no legal transition is absent from the interface rather than shown as failing.
 _Avoid_: action, transition (when referring to the button)
 
+### Sources
+
+**Fixture Mode**:
+The panel reading the bundled corpus rather than a live Board. It is what a fresh install does — no
+credential exists, so every state stays explorable before anything is authenticated — and it is also
+something the Operator can *ask for* with a credential standing, to put a state the Board already
+showed back on screen. The ask is theirs, persisted, and reversible; it is not a fact about the
+connection, and the credential and Board survive it untouched.
+_Avoid_: Demo mode, offline mode, sandbox.
+
 ### Time
 
 **Working Day**:
@@ -212,8 +222,9 @@ _Avoid_: scope creep, churn
     number; rule 2's `Finished` stays what it means — work completed, not work absent.
 14. A live read is issued by the Operator, not by the app: when the panel window opens, on
     explicit refresh, and in answer to something they did to the connection — remembering a Board
-    or an Estimate field, resolving or revoking a credential, or naming the tracked sprint among
-    several active ones. No timer and no polling reaches Jira, and no live read happens at launch.
+    or an Estimate field, resolving or revoking a credential, naming the tracked sprint among
+    several active ones, or switching the panel off Fixture Mode and back onto their Board. No
+    timer and no polling reaches Jira, and no live read happens at launch.
 15. Every reading carries the instant its data was taken, and a Cached Read is never shown as a
     live one: the panel says which of the two it is and how old the data is. Data that predates the
     current Working Day withdraws Confidence to `Unknown` through rule 1 while its Point totals, its

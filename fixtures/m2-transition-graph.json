@@ -1,0 +1,453 @@
+{
+  "_meta": {
+    "what": "The Operator's real Jira Data Center transition graph, anonymised.",
+    "capturedAt": "2026-09-25",
+    "how": "GET /rest/api/2/issue/{key}/transitions for every Issue in one active sprint (84 of them), unioned by source status. scripts/capture-transition-graph.sh re-runs the capture; the anonymising half is done by hand on purpose, because the step that decides what is safe to publish is a judgement rather than a transform.",
+    "usedBy": "M2's confirmation rule (an Intent needs confirmation exactly when no transition returns). Nothing in M0 or M1 reads this file.",
+    "anonymised": [
+      "Real transition and status ids replaced with synthetic ones; the graph shape is preserved, the numbering is not.",
+      "Every self/link/iconUrl and every instance-authored status description dropped.",
+      "Host, Board id, sprint id and Issue keys absent.",
+      "Status names and transition names kept verbatim, stray whitespace and all, because that is the workflow structure M2 resolves against."
+    ],
+    "realitiesPreserved": [
+      "The transition into In Progress is spelled ' In Progress' with a leading space when offered from Open and from In Review, and 'In Progress' with no space when offered from Need Info and from On hold. One Intent, two spellings, decided by the status it is asked from — matching a transition by name alone finds it on some rows and not others, and an Intent that resolves to nothing is absent from the panel rather than reported as a failure.",
+      "'Decline' and 'CANCELLED' are two different transitions reaching the same Cancelled status from Backlog.",
+      "Cancelled and Rejected held no Issue when this was captured, so the transitions they offer were never observed. A return path out of them is unknown here, which is not the same as absent — and 'unknown' is the wrong answer to build a confirmation rule on, so re-capture once anything sits in them.",
+      "Done offers exactly one transition, 'Reopen', and it lands in Open rather than back in In Review. M2's undo fires one reverse transition, not a walk, so a move to Done from In Review has no single step back and is confirmation-required by that rule — reachable again in three steps through Open and In Progress, which is a different thing from reversible and is precisely why the rule counts direct transitions only.",
+      "returnsToSource records that one-step question throughout: true only when the target status offers a transition whose target is the source status. It is null where the target held no Issue at capture time and so was never asked, which is unknown rather than irreversible."
+    ]
+  },
+  "statuses": [
+    {
+      "name": "Backlog",
+      "id": "101",
+      "observedOnIssueCount": 8,
+      "offersTransitions": true,
+      "transitions": [
+        {
+          "id": "11",
+          "name": "CANCELLED",
+          "to": {
+            "id": "102",
+            "name": "Cancelled",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        },
+        {
+          "id": "21",
+          "name": "Decline",
+          "to": {
+            "id": "102",
+            "name": "Cancelled",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        },
+        {
+          "id": "31",
+          "name": "Need Info",
+          "to": {
+            "id": "106",
+            "name": "Need Info",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": false
+        },
+        {
+          "id": "41",
+          "name": "On Hold",
+          "to": {
+            "id": "107",
+            "name": "On hold",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": false
+        },
+        {
+          "id": "51",
+          "name": "Open",
+          "to": {
+            "id": "108",
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "61",
+          "name": "Reject",
+          "to": {
+            "id": "109",
+            "name": "Rejected",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        }
+      ]
+    },
+    {
+      "name": "Cancelled",
+      "id": "102",
+      "observedOnIssueCount": 0,
+      "offersTransitions": false,
+      "transitions": []
+    },
+    {
+      "name": "Done",
+      "id": "103",
+      "observedOnIssueCount": 21,
+      "offersTransitions": true,
+      "transitions": [
+        {
+          "id": "71",
+          "name": "Reopen",
+          "to": {
+            "id": "108",
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": false
+        }
+      ]
+    },
+    {
+      "name": "In Progress",
+      "id": "104",
+      "observedOnIssueCount": 20,
+      "offersTransitions": true,
+      "transitions": [
+        {
+          "id": "81",
+          "name": "Decline",
+          "to": {
+            "id": "102",
+            "name": "Cancelled",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        },
+        {
+          "id": "91",
+          "name": "In Review",
+          "to": {
+            "id": "105",
+            "name": "In Review",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "101",
+          "name": "Need Info",
+          "to": {
+            "id": "106",
+            "name": "Need Info",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "111",
+          "name": "On Hold",
+          "to": {
+            "id": "107",
+            "name": "On hold",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "121",
+          "name": "Open",
+          "to": {
+            "id": "108",
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        }
+      ]
+    },
+    {
+      "name": "In Review",
+      "id": "105",
+      "observedOnIssueCount": 13,
+      "offersTransitions": true,
+      "transitions": [
+        {
+          "id": "131",
+          "name": " In Progress",
+          "to": {
+            "id": "104",
+            "name": "In Progress",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "141",
+          "name": "Decline",
+          "to": {
+            "id": "102",
+            "name": "Cancelled",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        },
+        {
+          "id": "151",
+          "name": "Done",
+          "to": {
+            "id": "103",
+            "name": "Done",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": false
+        },
+        {
+          "id": "161",
+          "name": "Need Info",
+          "to": {
+            "id": "106",
+            "name": "Need Info",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": false
+        },
+        {
+          "id": "171",
+          "name": "On Hold",
+          "to": {
+            "id": "107",
+            "name": "On hold",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": false
+        }
+      ]
+    },
+    {
+      "name": "Need Info",
+      "id": "106",
+      "observedOnIssueCount": 5,
+      "offersTransitions": true,
+      "transitions": [
+        {
+          "id": "181",
+          "name": "Decline",
+          "to": {
+            "id": "102",
+            "name": "Cancelled",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        },
+        {
+          "id": "191",
+          "name": "In Progress",
+          "to": {
+            "id": "104",
+            "name": "In Progress",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "201",
+          "name": "On Hold",
+          "to": {
+            "id": "107",
+            "name": "On hold",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "211",
+          "name": "Open",
+          "to": {
+            "id": "108",
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        }
+      ]
+    },
+    {
+      "name": "On hold",
+      "id": "107",
+      "observedOnIssueCount": 5,
+      "offersTransitions": true,
+      "transitions": [
+        {
+          "id": "221",
+          "name": "Decline",
+          "to": {
+            "id": "102",
+            "name": "Cancelled",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        },
+        {
+          "id": "231",
+          "name": "In Progress",
+          "to": {
+            "id": "104",
+            "name": "In Progress",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "241",
+          "name": "Need Info",
+          "to": {
+            "id": "106",
+            "name": "Need Info",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "251",
+          "name": "Open",
+          "to": {
+            "id": "108",
+            "name": "Open",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        }
+      ]
+    },
+    {
+      "name": "Open",
+      "id": "108",
+      "observedOnIssueCount": 12,
+      "offersTransitions": true,
+      "transitions": [
+        {
+          "id": "261",
+          "name": " In Progress",
+          "to": {
+            "id": "104",
+            "name": "In Progress",
+            "statusCategory": {
+              "key": "indeterminate"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "271",
+          "name": "Backlog",
+          "to": {
+            "id": "101",
+            "name": "Backlog",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "281",
+          "name": "Decline",
+          "to": {
+            "id": "102",
+            "name": "Cancelled",
+            "statusCategory": {
+              "key": "done"
+            }
+          },
+          "returnsToSource": null
+        },
+        {
+          "id": "291",
+          "name": "Need Info",
+          "to": {
+            "id": "106",
+            "name": "Need Info",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        },
+        {
+          "id": "301",
+          "name": "On Hold",
+          "to": {
+            "id": "107",
+            "name": "On hold",
+            "statusCategory": {
+              "key": "new"
+            }
+          },
+          "returnsToSource": true
+        }
+      ]
+    },
+    {
+      "name": "Rejected",
+      "id": "109",
+      "observedOnIssueCount": 0,
+      "offersTransitions": false,
+      "transitions": []
+    }
+  ]
+}

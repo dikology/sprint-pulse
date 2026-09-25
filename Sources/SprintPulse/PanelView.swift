@@ -82,6 +82,14 @@ struct PanelView: View {
                 Button("Refresh") {
                     Task { await panel.refresh() }
                 }
+                // The other direction #15 opens: the Board is reachable, and the Operator can
+                // still say "put me on a scenario instead". Beside Refresh rather than below the
+                // fold, because the reason to want it is usually this reading on this screen.
+                if panel.canSwitchToFixtures {
+                    Button("Read fixtures instead") {
+                        panel.switchToFixtures()
+                    }
+                }
                 dataAgeLine
                 Text("Reads when this window opens and on Refresh. Never on a timer.")
                     .font(.caption2)
@@ -255,6 +263,12 @@ struct PanelView: View {
     /// entries are `FixtureScenario.allCases`, which `FixtureCorpusTests` pins to the corpus
     /// directories in both directions — a fixture the picker cannot load, or a picker entry
     /// with no fixture, fails the suite rather than surfacing as a dead option.
+    ///
+    /// Since #15 this is also where fixture mode can be *entered on purpose* while a live Board
+    /// stands, so the same block carries the way out: the control that goes back to the Board is
+    /// shown whenever a Board is configured, whether or not it is what is being read. A panel
+    /// dropped into the corpus with no visible way back is a panel that has eaten its credential,
+    /// which is the exact thing this ticket exists to make untrue.
     @ViewBuilder
     private var scenarioPicker: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -264,14 +278,42 @@ struct PanelView: View {
                 }
             }
             .pickerStyle(.menu)
-            // What the panel itself knows: the reading in front of the Operator came from the
-            // bundled corpus, not a live sprint. Fixtures stay the reading for as long as the app
-            // has no complete live configuration (#10, #11); #15 adds the explicit switch back.
-            Text("Fixture mode — the panel is reading a bundled scenario, not a live sprint. Configuring a Board below replaces this reading.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            fixtureModeNote
         }
+    }
+
+    /// Why the panel is reading a scenario, and what would make it stop. Three states, because #15
+    /// made "am I here because I asked, or because there is nothing else?" a question the panel can
+    /// genuinely answer three ways — and the promise each sentence makes has to be one the app will
+    /// keep. With no ask stored, configuring a Board does replace the reading. With an ask stored
+    /// and a Board standing, the way out is the control beside this note, not the connection. With
+    /// an ask stored and no Board — the credential revoked since, which the mode survives — there is
+    /// nothing to switch back to *yet*, and copy promising otherwise would be the panel refusing to
+    /// do the one thing it just said it would.
+    @ViewBuilder
+    private var fixtureModeNote: some View {
+        if panel.readMode == .fixtures {
+            if let boardID = panel.configuredBoardID {
+                note("Fixture mode — you asked the panel to read a bundled scenario. Your credential and Board \(boardID) are untouched, and the readings below are not your sprint.")
+                Button("Read Board \(boardID)") {
+                    panel.switchToBoard()
+                }
+            } else {
+                note("Fixture mode — you asked the panel to read a bundled scenario, and no Board is configured to switch back to. Configuring one below puts that choice on this panel.")
+            }
+        } else {
+            note("Fixture mode — the panel is reading a bundled scenario, not a live sprint. Configuring a Board below replaces this reading.")
+        }
+    }
+
+    /// A secondary sentence in the panel's established shape: small, dimmed, allowed to wrap. Every
+    /// explanation here is a sentence rather than a label, and the three fixture-mode states above
+    /// are one sentence each by design.
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// The credential setup (#10) and the rest of the connection's configuration (#11): the one
@@ -325,11 +367,17 @@ struct PanelView: View {
     /// The Board is typed rather than picked from a list because M1's bounded call surface has no
     /// board listing to ask for — three read operations, and a fourth would be a change to #2
     /// rather than an implementation detail (#11).
+    ///
+    /// Named off `configuredBoardID`, not `boardID`: this block states what the connection *is*,
+    /// and since #15 the two come apart — a Board can be configured while the panel is reading a
+    /// bundled scenario, and saying "no Board configured" over a stored Board 172 would be a
+    /// sentence about the reading that does not belong in the configuration.
     @ViewBuilder
     private var boardConfiguration: some View {
-        if let boardID = panel.boardID {
+        if let boardID = panel.configuredBoardID {
             // Configuration, not a claim about the last request: whether the reading on screen came
-            // off the Board just now or out of the cache is the caption's sentence to say (#12).
+            // off the Board just now, out of the cache, or out of a scenario the Operator asked for
+            // is the caption's sentence to say (#12, #15).
             Text("Board \(boardID) configured.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)

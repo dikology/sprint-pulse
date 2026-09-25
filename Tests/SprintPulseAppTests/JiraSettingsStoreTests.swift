@@ -123,4 +123,48 @@ final class JiraSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.trackedSprintID, 5311)
         XCTAssertEqual(store.estimateFieldID, "customfield_10007")
     }
+
+    // MARK: - Which source the Operator asked to be read (#15)
+
+    /// The default is the *absence* of an ask, not a stored value: fixture mode is what the app
+    /// does while no credential exists (#10, #11), so a fresh install must not need to have been
+    /// told. Writing `.automatic` away rather than storing it keeps "never asked" and "asked for
+    /// the credential to decide" one state.
+    func test_fresh_store_recordsNoSourceAsk_andThatMeansTheCredentialDecides() {
+        XCTAssertEqual(store.readMode, .automatic)
+        XCTAssertNil(
+            defaults.object(forKey: "jira-read-mode"),
+            "the default leaves nothing in preferences, so a fresh domain and a reset one are identical"
+        )
+    }
+
+    func test_readMode_roundTrips_andChoosingAutomaticAgain_removesTheAsk() {
+        store.readMode = .fixtures
+        XCTAssertEqual(store.readMode, .fixtures)
+        XCTAssertEqual(defaults.string(forKey: "jira-read-mode"), "fixtures")
+
+        store.readMode = .automatic
+        XCTAssertEqual(store.readMode, .automatic)
+        XCTAssertNil(defaults.object(forKey: "jira-read-mode"))
+    }
+
+    /// Preferences are a user-editable file. A value that is not one of the two asks reads as
+    /// "nobody asked", which is the credential's own rule (#10, #11) — the alternative is a panel
+    /// that reads nothing at all because of a typo in a plist nobody should have opened.
+    func test_anUnreadableSourceAsk_isNoAsk_notADeadPanel() {
+        defaults.set("livish", forKey: "jira-read-mode")
+        XCTAssertEqual(store.readMode, .automatic)
+    }
+
+    /// The ask is about which source is on screen, not about the connection, so revoking the
+    /// credential does not cancel it: the Operator who pinned the corpus and then revoked access
+    /// is still looking at the corpus, and the ask is inert rather than contradictory either way.
+    func test_clearIdentity_leavesTheSourceAskAlone() {
+        store.readMode = .fixtures
+        store.identity = OperatorIdentity(key: "JIRAUSER10500", name: "dgimaletdinov")
+
+        store.clearIdentity()
+
+        XCTAssertEqual(store.readMode, .fixtures)
+    }
 }
