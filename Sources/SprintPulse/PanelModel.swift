@@ -98,6 +98,13 @@ final class PanelModel: ObservableObject {
             // A different scenario is a different Board, and the sprint named on the old one is
             // not an answer about the new (#11).
             fixtureSprintChoice = nil
+            // Chosen while a live Board is what is being read, the scenario is stored and not
+            // re-read (#17). One invariant 14 cannot license otherwise: a scenario click is not
+            // on its list of acts that issue a live read, and `load`'s branch would have read
+            // the Board on the strength of a corpus choice. The Settings picker disables itself
+            // for the same reason — this guard is why the invariant does not depend on that.
+            // `switchToFixtures` reloads anyway, and finds the choice already waiting.
+            guard liveRead == nil else { return }
             Task { await load() }
         }
     }
@@ -328,6 +335,29 @@ final class PanelModel: ObservableObject {
         liveRead?.identity ?? fixtureIdentity
     }
 
+    /// The Panel's one line naming where the reading came from (#17).
+    ///
+    /// Here rather than in the view because it is panel wording worth having under test, the same
+    /// standing as `dataAgeText` and `baselineCaption` (#12, #14) — and because the line gained a
+    /// case with the move. The scenario picker the Panel used to carry named the bundled scenario
+    /// by showing it; Settings carries the picker now, so the caption has to say which scenario is
+    /// on screen. The raw value is the corpus's own name — the directory `FixtureCorpusTests`
+    /// pins — not the picker's descriptive title, because the line's job is provenance, not sales.
+    ///
+    /// Live and cached answer in the shape the caption always had: which Board was asked, and as
+    /// whom (#11) — the one thing on the Panel the Operator cannot reproduce from a fixture, and
+    /// it stays even though the connection's configuration moved out.
+    var sourceLine: String {
+        switch source {
+        case .fixture(let scenario):
+            return "Fixture — \(scenario.rawValue)"
+        case .live(let boardID):
+            return "Live — Board \(boardID), as \(readingIdentity.name)"
+        case .cached(let boardID):
+            return "Cached — Board \(boardID), as \(readingIdentity.name)"
+        }
+    }
+
     /// The configuration a live read *could* use: a stored credential, the base URL and identity
     /// that came with it, and a Board. Absent any one of them there is no live read to be had — a
     /// credential with no Board is not half a live read, it is a live read with nothing to ask
@@ -395,6 +425,23 @@ final class PanelModel: ObservableObject {
     /// and it costs no request — so the control is shown only in live mode.
     func refresh() async {
         await load()
+    }
+
+    /// The one wiring between the two models (#17), called once by the composition root:
+    /// remembering a Board or an Estimate field, resolving a credential, and revoking one are
+    /// each the Operator asking for the connection to be read, which makes the fetch that
+    /// follows an explicit request on the same standing as Refresh (#11, invariant 14).
+    ///
+    /// This used to live in the Panel's `onAppear`, which was fine while the connection's forms
+    /// were on the Panel and is wrong now that they are in Settings: Settings can be the first
+    /// window opened, and a Board remembered there would then trigger no read at all until some
+    /// later window appeared — invariant 14's trigger silently dropped. One assignment for the
+    /// whole app, so an act on the connection costs exactly one read however many windows stand
+    /// open, and opening one costs none.
+    func readsOnConfigurationChanges(of setup: JiraSetupModel) {
+        setup.onConfigurationChanged = { [weak self] in
+            Task { await self?.refresh() }
+        }
     }
 
     /// The Operator put the panel back on the bundled corpus with their credential untouched

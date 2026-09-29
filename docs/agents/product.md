@@ -178,7 +178,11 @@ Sprint Pulse lives at the notch, not in the menu bar (M1.5,
   (`Live · 4m`, `Cached · 3h`, `Fixture · cap-both`), Refresh, and nothing else — except the
   Unmapped Status warning's Flow State menu, resolved where it is seen.
 - **Settings** is a standard macOS window: Jira connection, Board, Estimate field, the Status Map
-  editor, and Fixture Mode with its scenario picker.
+  editor, and Fixture Mode with its scenario picker. Opening it issues no live read; each act on
+  the connection made in it issues exactly one. While the app is still a `MenuBarExtra` — #17
+  lands before the notch host of #19 puts Settings… and Quit on the Glance's right-click — the
+  Panel carries the app's only two ways out, a Settings… button and Quit, because an accessory
+  app with no menu cannot rely on ⌘, while the Panel has no focus.
 
 The Panel carries no explanatory prose. What a figure means is this document's job and
 `CONTEXT.md`'s; the instrument states, it does not annotate itself. Status text the invariants

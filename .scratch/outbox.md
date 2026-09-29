@@ -133,3 +133,18 @@ refused on taste. It was checked against an invariant written two milestones ear
 the Operator's act) and found to be polling in disguise. ADR-0005, which rejected Boring Notch, stands
 untouched, because its own Consequences had already named this as "a second thin view layer".
 Refs: #16, #17, #18, #19; `docs/adr/0006-notch-glance-opened-by-click.md`; `CONTEXT.md` (Glance, Panel)
+
+### 2026-09-29 — Invariants kept true by the *absence of a control* must be re-kept when the UI moves
+#17 moved every configuration out of a MenuBarExtra panel into a `Settings` scene — nominally a
+pure relocation. What made it safe was asking "which invariants were true because the old layout
+made them unreachable?", and two answers became code rather than view habits: the read-trigger
+wiring hung off the Panel's `onAppear` (Settings can be the first window opened, so a remembered
+Board triggered nothing until a later window appeared — it moved to the composition root with a
+test pinning "one remembered Board, exactly one live read, panel never opened"), and the scenario
+picker was never rendered while a live Board was being read, which structurally prevented a model
+path where choosing a scenario issued a live read. Settings renders the picker always; the guard
+now sits in the model, mutation-checked, with `.disabled()` only voicing what the model already
+refuses. The cross-repo claim: when an agent relocates UI across surfaces, every invariant
+enforced by "the control wasn't there" becomes view-dependent after the move, and the check that
+catches it is a pass over *where triggers can now fire*, not a diff of what renders where.
+Refs: #17; `Sources/SprintPulse/PanelModel.swift`; `Sources/SprintPulse/SprintPulseApp.swift`; `Tests/SprintPulseAppTests/SettingsWindowTests.swift`

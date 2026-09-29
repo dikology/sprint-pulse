@@ -16,10 +16,14 @@ import SprintPulseCore
 /// fetch is not one of them — it is a line beside whatever was last read, and since #12 the caption
 /// above it says whether that was the Board a moment ago or the cache, and when the data behind it
 /// was taken.
+///
+/// #17 took the configuration out: the connection, the Board and Estimate fields, the Status Map
+/// editor, and the scenario picker are the Settings window's now. What stays is the reading,
+/// Refresh, the `Unmapped Status` menu resolved where it is met (#13's exception, the same
+/// `StatusMappingMenu` the Settings editor carries), and the two ways out of a still-`MenuBarExtra`
+/// app until the notch host gives them a new home.
 struct PanelView: View {
     @ObservedObject var panel: PanelModel
-    @ObservedObject var setup: JiraSetupModel
-    @State private var statusMapExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -31,17 +35,9 @@ struct PanelView: View {
                 problemLine(readProblem)
             }
 
-            // The Status Map is configuration, not a figure in the reading: it belongs beside the
-            // Board and the Estimate field, editable whether or not there is a reading to show —
-            // an `Unmapped Status` is exactly the case where the Operator arrives here from a
-            // warning, and a Board that will not answer is no reason they cannot fix the map.
-            statusMapEditor
-
             Divider()
 
-            jiraConnection
-
-            Divider()
+            settingsButton
 
             Button("Quit Sprint Pulse") {
                 NSApplication.shared.terminate(nil)
@@ -50,45 +46,33 @@ struct PanelView: View {
         }
         .padding(12)
         .frame(width: 280)
-        // The window opening is one of the two moments a live read happens (#11); the other is
-        // the Refresh button. Nothing here polls, and while the panel is reading the corpus this
-        // asks for nothing — a fixture is a file, not a request.
+        // The window opening is one of the moments a live read happens (#11); the other is the
+        // Refresh button. Nothing here polls, and while the panel is reading the corpus this
+        // asks for nothing — a fixture is a file, not a request. The wiring that turns an act on
+        // the connection into a read belongs to the composition root now: those acts live in the
+        // Settings window with #17, and the Panel is no longer where they can first be made.
         .onAppear {
-            // One piece of wiring between the two models: remembering the Board or the Estimate
-            // field is the Operator asking for it to be read, which makes the fetch that follows
-            // an explicit request like Refresh (#11). Idempotent, because this runs on every
-            // open.
-            setup.onConfigurationChanged = { Task { await panel.refresh() } }
             Task { await panel.windowDidAppear() }
         }
     }
 
-    /// What the panel is reading, when its data was read, and the one control that asks for a fresh
-    /// live read.
+    /// What the panel is reading, and the one control that asks for a fresh live read. Since #17
+    /// this is the whole chrome above the reading: one line naming the source — bundled scenario,
+    /// Board, or the last read that got through — and Refresh, offered only to a Board read,
+    /// because a fixture costs no request and choosing one is the ask.
     @ViewBuilder
     private var readingSource: some View {
-        if let boardID = panel.boardID {
-            VStack(alignment: .leading, spacing: 4) {
-                // The Board and the identity are named because a live reading is the one thing on
-                // this panel the Operator cannot reproduce from a fixture: they need to see which
-                // Board was asked, and as whom (#11). The first word says whether the answer came
-                // off it just now or survived the walk from the train (#12), and it comes first
-                // because that is the question an Operator asks of a number before they ask
-                // anything else of it.
-                Text(sourceCaption(boardID))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 4) {
+            // The model words it, as it words the age line: the Panel's provenance is panel wording
+            // worth having under test, and with the picker gone this line is the only thing that
+            // names a fixture reading.
+            Text(panel.sourceLine)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if panel.boardID != nil {
                 Button("Refresh") {
                     Task { await panel.refresh() }
-                }
-                // The other direction #15 opens: the Board is reachable, and the Operator can
-                // still say "put me on a scenario instead". Beside Refresh rather than below the
-                // fold, because the reason to want it is usually this reading on this screen.
-                if panel.canSwitchToFixtures {
-                    Button("Read fixtures instead") {
-                        panel.switchToFixtures()
-                    }
                 }
                 dataAgeLine
                 Text("Reads when this window opens and on Refresh. Never on a timer.")
@@ -96,22 +80,18 @@ struct PanelView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        } else {
-            scenarioPicker
         }
     }
 
-    private func sourceCaption(_ boardID: Int) -> String {
-        let read = "Board \(boardID), as \(panel.readingIdentity.name)"
-        switch panel.source {
-        case .fixture:
-            // Unreachable: a fixture read has no Board, which is what `panel.boardID` is for. The
-            // words are here rather than a `default:` so the caption's vocabulary stays one list.
-            return "Fixture — \(read)"
-        case .live:
-            return "Live — \(read)"
-        case .cached:
-            return "Cached — \(read)"
+    /// The way into the Settings window while the app is still a `MenuBarExtra`: an accessory app
+    /// has no menu, so ⌘, cannot be relied on and the Panel has no focus to hold it — which is
+    /// why #17's move had to leave a door on the Panel itself.
+    @ViewBuilder
+    private var settingsButton: some View {
+        if #available(macOS 14.0, *) {
+            OpenSettingsButton()
+        } else {
+            LegacySettingsButton()
         }
     }
 
@@ -259,213 +239,6 @@ struct PanelView: View {
         return formatter
     }()
 
-    /// The corpus browser (#9): every state the instrument can reach is one click away. The
-    /// entries are `FixtureScenario.allCases`, which `FixtureCorpusTests` pins to the corpus
-    /// directories in both directions — a fixture the picker cannot load, or a picker entry
-    /// with no fixture, fails the suite rather than surfacing as a dead option.
-    ///
-    /// Since #15 this is also where fixture mode can be *entered on purpose* while a live Board
-    /// stands, so the same block carries the way out: the control that goes back to the Board is
-    /// shown whenever a Board is configured, whether or not it is what is being read. A panel
-    /// dropped into the corpus with no visible way back is a panel that has eaten its credential,
-    /// which is the exact thing this ticket exists to make untrue.
-    @ViewBuilder
-    private var scenarioPicker: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Picker("Fixture scenario", selection: $panel.scenario) {
-                ForEach(FixtureScenario.allCases) { scenario in
-                    Text(title(for: scenario)).tag(scenario)
-                }
-            }
-            .pickerStyle(.menu)
-            fixtureModeNote
-        }
-    }
-
-    /// Why the panel is reading a scenario, and what would make it stop. Three states, because #15
-    /// made "am I here because I asked, or because there is nothing else?" a question the panel can
-    /// genuinely answer three ways — and the promise each sentence makes has to be one the app will
-    /// keep. With no ask stored, configuring a Board does replace the reading. With an ask stored
-    /// and a Board standing, the way out is the control beside this note, not the connection. With
-    /// an ask stored and no Board — the credential revoked since, which the mode survives — there is
-    /// nothing to switch back to *yet*, and copy promising otherwise would be the panel refusing to
-    /// do the one thing it just said it would.
-    @ViewBuilder
-    private var fixtureModeNote: some View {
-        if panel.readMode == .fixtures {
-            if let boardID = panel.configuredBoardID {
-                note("Fixture mode — you asked the panel to read a bundled scenario. Your credential and Board \(boardID) are untouched, and the readings below are not your sprint.")
-                Button("Read Board \(boardID)") {
-                    panel.switchToBoard()
-                }
-            } else {
-                note("Fixture mode — you asked the panel to read a bundled scenario, and no Board is configured to switch back to. Configuring one below puts that choice on this panel.")
-            }
-        } else {
-            note("Fixture mode — the panel is reading a bundled scenario, not a live sprint. Configuring a Board below replaces this reading.")
-        }
-    }
-
-    /// A secondary sentence in the panel's established shape: small, dimmed, allowed to wrap. Every
-    /// explanation here is a sentence rather than a label, and the three fixture-mode states above
-    /// are one sentence each by design.
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    /// The credential setup (#10) and the rest of the connection's configuration (#11): the one
-    /// Board to watch and the custom field that carries Estimates. The rules are the panel's
-    /// existing ones — no motion (a probe in flight is a plain line, not a spinner), no meaning
-    /// carried by colour alone, and every failure named by its own distinct state rather than
-    /// "could not connect".
-    ///
-    /// The token field is a `SecureField` and the draft is cleared the moment the attempt
-    /// ends; the only place the token outlives the attempt is the single Keychain item, on a
-    /// resolved identity and never otherwise. Removal is offered on `hasStoredCredential`,
-    /// not on the flow's state: a token in the Keychain is never left with no way to revoke
-    /// it from the panel.
-    @ViewBuilder
-    private var jiraConnection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Jira connection")
-                .font(.subheadline.bold())
-                .accessibilityAddTraits(.isHeader)
-
-            switch setup.state {
-            case .resolved(let identity):
-                // The confirmation the Operator asked for: who the app thinks they are, in
-                // both identifiers it matched on. Never a paraphrase, never a guess.
-                Text("Identity confirmed: \(identity.name) — key \(identity.key).")
-                    .font(.caption)
-                    .fixedSize(horizontal: false, vertical: true)
-                boardConfiguration
-                Button("Remove credential") {
-                    setup.removeCredential()
-                }
-
-            case .notConfigured:
-                connectionForm(connecting: false, failure: nil)
-
-            case .connecting:
-                connectionForm(connecting: true, failure: nil)
-
-            case .failed(let message):
-                connectionForm(connecting: false, failure: message)
-            }
-        }
-        // `.contain`, not the value rows' `.combine`: a form is a set of live controls the
-        // reader must reach individually — the combine that suits "label: figure" rows would
-        // swallow the fields.
-        .accessibilityElement(children: .contain)
-    }
-
-    /// The Board and Estimate fields (#11): configured once, remembered thereafter.
-    ///
-    /// The Board is typed rather than picked from a list because M1's bounded call surface has no
-    /// board listing to ask for — three read operations, and a fourth would be a change to #2
-    /// rather than an implementation detail (#11).
-    ///
-    /// Named off `configuredBoardID`, not `boardID`: this block states what the connection *is*,
-    /// and since #15 the two come apart — a Board can be configured while the panel is reading a
-    /// bundled scenario, and saying "no Board configured" over a stored Board 172 would be a
-    /// sentence about the reading that does not belong in the configuration.
-    @ViewBuilder
-    private var boardConfiguration: some View {
-        if let boardID = panel.configuredBoardID {
-            // Configuration, not a claim about the last request: whether the reading on screen came
-            // off the Board just now, out of the cache, or out of a scenario the Operator asked for
-            // is the caption's sentence to say (#12, #15).
-            Text("Board \(boardID) configured.")
-                .font(.caption)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            Text("No Board configured — the panel is reading fixtures.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-
-        TextField("Board — id, or its URL (…/boards/172)", text: $setup.boardText)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityLabel("Board id or URL")
-
-        Button("Remember this Board") {
-            setup.saveBoard()
-        }
-
-        TextField("Estimate field — e.g. customfield_10007", text: $setup.estimateFieldText)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityLabel("Estimate custom field id")
-
-        Button("Remember this Estimate field") {
-            setup.saveEstimateField()
-        }
-
-        // Why the field is on the panel at all: custom field ids differ per instance, and read
-        // the wrong one and every Issue arrives Unestimated — which the instrument reports as
-        // a finished sprint. The failure is quiet, so the hint has to say where to look.
-        Text("If every Points figure reads 0 for a sprint that clearly has Estimates, this field is the wrong custom field for your instance.")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-        if let problem = setup.configurationProblem {
-            Text(problem)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-        }
-    }
-
-    /// The setup form, shared by every state that is not a confirmed identity. The removal
-    /// control joins it whenever a credential is actually stored — an earlier setup's token
-    /// must stay revocable even when the flow itself is mid-attempt or showing a failure.
-    @ViewBuilder
-    private func connectionForm(connecting: Bool, failure: String?) -> some View {
-        TextField(
-            "Jira base URL — https://jira.example.com",
-            text: $setup.baseURLText
-        )
-        .textFieldStyle(.roundedBorder)
-        .accessibilityLabel("Jira base URL")
-
-        SecureField("Personal Access Token", text: $setup.tokenText)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityLabel("Personal Access Token")
-            .disabled(connecting)
-
-        Button("Verify credential") {
-            Task { await setup.connect() }
-        }
-        .disabled(connecting)
-
-        if connecting {
-            // A line, not a spinner. It lasts one `/myself` request over a VPN that may be
-            // down — which is exactly the case the failure message below distinguishes.
-            Text("Asking Jira who this credential belongs to…")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-
-        if let failure {
-            Text(failure)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-        }
-
-        if setup.hasStoredCredential {
-            Button("Remove credential") {
-                setup.removeCredential()
-            }
-        }
-    }
-
     @ViewBuilder
     private func forecast(_ instrument: Instrument) -> some View {
         Text(instrument.sprintName)
@@ -517,8 +290,9 @@ struct PanelView: View {
                             .font(.caption)
                             .textSelection(.enabled)
                         Spacer()
-                        mappingMenu(
-                            jiraStatus, emptySelectionLabel: "Choose a Flow State"
+                        StatusMappingMenu(
+                            panel: panel, jiraStatus: jiraStatus,
+                            emptySelectionLabel: "Choose a Flow State"
                         )
                     }
                 }
@@ -585,141 +359,6 @@ struct PanelView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - The Status Map editor (#13)
-
-    /// The map, editable: the only place in Sprint Pulse where a Jira status name is *translated*
-    /// into a Flow State (ADR-0002, CONTEXT invariant 1) — a status name surfaces anywhere else only
-    /// as the data of an `Unmapped Status`, which is what sends the Operator here.
-    ///
-    /// A row's menu holds all six Flow States plus "Not mapped", so any status can be sent to any
-    /// state — `Dropped` included, which is the mapping ADR-0002 names as the one that corrupts the
-    /// instrument quietly and is nonetheless the Operator's to make — and taking a status out of the
-    /// map is the same control rather than a second affordance. There is no Save button: a pick is
-    /// written through and the reading above is judged again in the same breath, which is what
-    /// "mapping a status restores the forecast" means on screen (#13 AC 3).
-    ///
-    /// The disclosure is a plain button rather than a `DisclosureGroup` because the system one
-    /// animates its rows open, and the panel ships with no motion at all (#9). The state lives in
-    /// the rows' visibility, spelled out in `accessibilityValue`, because a chevron that rotates is
-    /// exactly the meaning an image alone must not carry.
-    @ViewBuilder
-    private var statusMapEditor: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                statusMapExpanded.toggle()
-            } label: {
-                HStack {
-                    Text("Status Map")
-                    Spacer()
-                    Image(systemName: statusMapExpanded ? "chevron.up" : "chevron.down")
-                        .accessibilityHidden(true)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .font(.caption)
-            .accessibilityValue(statusMapExpanded ? "expanded" : "collapsed")
-
-            if statusMapExpanded {
-                Text("Jira status names live here and nowhere else in Sprint Pulse. A change takes effect on the reading above at once — no Refresh, and no request to Jira.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if panel.statusMap.rows.isEmpty {
-                    // An emptied map is the Operator's own edit, and its consequence is every status
-                    // Unmapped. The panel says which map is in use whatever the reason (#13).
-                    Text("The map is empty, so every status Jira reports is an Unmapped Status until a row is added.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(panel.statusMap.rows, id: \.jiraStatus) { row in
-                        HStack {
-                            Text(row.jiraStatus)
-                                .textSelection(.enabled)
-                            Spacer()
-                            mappingMenu(
-                                row.jiraStatus, emptySelectionLabel: "Not mapped"
-                            )
-                        }
-                    }
-                }
-                .font(.caption)
-
-                TextField("Another status — exactly as Jira spells it", text: $panel.newStatusText)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Jira status to add to the map")
-
-                HStack {
-                    flowStateMenu(
-                        "Flow State for the status being added",
-                        selection: $panel.newStatusFlowState,
-                        emptySelectionLabel: "Choose a Flow State"
-                    )
-                    Button("Add to the map") {
-                        panel.addStatusToMap()
-                    }
-                }
-
-                if let problem = panel.statusMapProblem {
-                    Text(problem)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                }
-            }
-        }
-        // `.contain`, not the value rows' `.combine`: every row here is a control the reader has to
-        // reach on their own — the same distinction the Jira connection form draws (#9).
-        .accessibilityElement(children: .contain)
-    }
-
-    /// A menu over the six Flow States. The `nil` case is labelled differently in the two places it
-    /// appears — "Not mapped" on a row that is in the map, "Choose a Flow State" on a draft that is
-    /// not yet one — because an unchosen draft and a deliberate removal are two different acts, and
-    /// the second one has a consequence the panel must not soft-pedal.
-    private func flowStateMenu(
-        _ name: String, selection: Binding<FlowState?>, emptySelectionLabel: String
-    ) -> some View {
-        Picker(name, selection: selection) {
-            Text(emptySelectionLabel).tag(nil as FlowState?)
-            flowStateOptions
-        }
-        .pickerStyle(.menu)
-        .labelsHidden()
-        .fixedSize()
-    }
-
-    /// The same menu for one named status, read out of the map and written back through the model's
-    /// one writer. Both the `Unmapped Status` warning and the map's own rows need it — the first to
-    /// be resolvable where it is met, the second to be correctable afterwards — and the two must not
-    /// disagree about what picking does (#13).
-    private func mappingMenu(_ jiraStatus: String, emptySelectionLabel: String) -> some View {
-        flowStateMenu(
-            "Flow State for \(jiraStatus)",
-            selection: Binding<FlowState?>(
-                get: { panel.statusMap.flowState(for: jiraStatus) },
-                set: { panel.setMapping(jiraStatus: jiraStatus, to: $0) }
-            ),
-            emptySelectionLabel: emptySelectionLabel
-        )
-    }
-
-    /// The six Flow States, in the domain's own order and in the panel's words. One list, so a
-    /// row's menu and the add row's cannot drift apart — and `FlowState.allCases` is the whole
-    /// vocabulary, which is what makes every status mappable to every state, `Dropped` included
-    /// (#13 AC 4).
-    @ViewBuilder
-    private var flowStateOptions: some View {
-        ForEach(FlowState.allCases, id: \.self) { state in
-            Text(label(for: state)).tag(state as FlowState?)
-        }
-    }
-
     /// One Flow-State group — its subtotal and a row per state. The subtotal is the sum of the
     /// rows beneath it, so the reader can check it by hand.
     @ViewBuilder
@@ -738,7 +377,7 @@ struct PanelView: View {
             }
             .accessibilityElement(children: .combine)
             ForEach(states, id: \.self) { state in
-                pointsRow(label(for: state), instrument.points(state), indented: true)
+                pointsRow(state.displayName, instrument.points(state), indented: true)
             }
         }
     }
@@ -784,19 +423,6 @@ struct PanelView: View {
         .accessibilityLabel("\(label): \(spoken)")
     }
 
-    /// The panel's label for a Flow State. Display text is a view concern; the domain enum
-    /// carries only the vocabulary.
-    private func label(for state: FlowState) -> String {
-        switch state {
-        case .toDo: return "To Do"
-        case .inProgress: return "In Progress"
-        case .inReview: return "In Review"
-        case .onHold: return "On Hold"
-        case .done: return "Done"
-        case .dropped: return "Dropped"
-        }
-    }
-
     /// The panel's label for a Confidence State. Confidence is a named state, never a
     /// percentage or a probability — the view renders exactly that string.
     private func label(for state: ConfidenceState) -> String {
@@ -808,43 +434,6 @@ struct PanelView: View {
         case .noSweat: return "No Sweat"
         case .handsOff: return "Hands Off"
         case .finished: return "Finished"
-        }
-    }
-
-    /// The picker's name for a fixture scenario: what the Operator will see if they click it,
-    /// in the panel's own vocabulary. Display text stays in the view — `FixtureScenario`
-    /// carries only the corpus (the #9 convention, as with every `label(for:)` here).
-    private func title(for scenario: FixtureScenario) -> String {
-        switch scenario {
-        case .walkingSkeleton: return "Walking Skeleton — first observation"
-        case .confidenceColdStart: return "Unknown — one Working Day elapsed"
-        case .confidenceZeroCompleted: return "Unknown — nothing Completed yet"
-        case .unmappedStatus: return "Unknown — Unmapped Status present"
-        case .confidenceOffTrack: return "Off Track — behind the Required Rate"
-        case .confidenceDaysExhausted: return "Off Track — no Working Days Remaining"
-        case .confidenceTight: return "Tight — ratio at 0.75"
-        case .confidenceOnTrack: return "On Track — ratio at 1.00"
-        case .confidenceNoSweat: return "No Sweat — ratio at 1.25"
-        case .confidenceHandsOff: return "Hands Off — only Waiting Points remain"
-        case .confidenceFinished: return "Finished — nothing left to move"
-        case .capUnestimated: return "Unestimated Cap firing alone"
-        case .capWaitingHeavy: return "Waiting-heavy Cap firing alone"
-        case .capBoth: return "Both Caps firing — two bands lost"
-        case .capAtBottom: return "Caps firing at the bottom of the scale"
-        case .capHandsOff: return "Caps against Hands Off — nothing demoted"
-        case .capUnknown: return "Caps against Unknown — nothing demoted"
-        case .scopeGrowth: return "Scope — 34 Points added mid-sprint"
-        case .scopeShrink: return "Scope — 8 Points removed mid-sprint"
-        case .baselineColdStart: return "Scope — cold start, Delta 0"
-        case .allDropped: return "A sprint entirely Dropped"
-        case .allFlowStates: return "Every Flow State in one sprint"
-        case .unestimatedAcrossStates: return "Unestimated Issues across Actionable and Waiting"
-        case .subtasksWithEstimates: return "Sub-tasks with Estimates, ignored"
-        case .twoActiveSprints: return "Two active sprints — the Board asks which one is tracked"
-        case .severalAssignees: return "Several assignees — My Work forecast, the rest context"
-        case .noWorkAssigned: return "No work assigned — the forecast has no subject"
-        case .cacheWithinWorkingDay: return "Cached — read earlier in the Working Day, the forecast stands"
-        case .cachePredatesWorkingDay: return "Cached — read on an earlier Working Day, Confidence withdrawn"
         }
     }
 
@@ -937,5 +526,30 @@ struct PanelView: View {
     /// figure (invariant 10).
     private func rateText(_ rate: Double) -> String {
         String(format: "%.2f", rate)
+    }
+}
+
+/// Opens the `Settings` scene (#17). The app is an accessory with no menu, so it activates
+/// itself first — a Settings window behind the Panel is a Settings window nobody opened.
+@available(macOS 14.0, *)
+private struct OpenSettingsButton: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button("Settings…") {
+            NSApp.activate(ignoringOtherApps: true)
+            openSettings()
+        }
+    }
+}
+
+/// The macOS 13 way: the responder-chain action the `Settings` scene installs, and from macOS 14
+/// a selector that stopped reaching it — hence the split at the call site.
+private struct LegacySettingsButton: View {
+    var body: some View {
+        Button("Settings…") {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
     }
 }

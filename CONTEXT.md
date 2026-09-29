@@ -117,6 +117,13 @@ from. Configuration is not on it — the one exception is choosing a Flow State 
 Status, which is resolved where it is seen.
 _Avoid_: popover, window, dashboard
 
+**Settings**:
+The surface holding all of Sprint Pulse's configuration: the Jira connection, the Board, the
+Estimate field, the Status Map, and Fixture Mode with its scenario picker. The Operator opens it;
+opening it asks nothing of the Board — a live read answers an act on the connection, never the
+appearance of a window.
+_Avoid_: preferences, options, config screen
+
 ### Sources
 
 **Fixture Mode**:
