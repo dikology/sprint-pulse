@@ -133,7 +133,7 @@ struct SettingsView: View {
         if let boardID = panel.configuredBoardID {
             // Configuration, not a claim about the last request: whether the reading on screen
             // came off the Board just now, out of the cache, or out of a scenario the Operator
-            // asked for is the Panel's caption to say (#12, #15).
+            // asked for is the Panel's source line to say (#12, #15).
             Text("Board \(boardID) configured.")
         } else {
             Text("No Board configured — the panel is reading fixtures.")

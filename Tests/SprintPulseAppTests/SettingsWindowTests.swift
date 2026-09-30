@@ -11,8 +11,9 @@ import XCTest
 /// - **AC 5, the Panel's source line.** With the scenario picker gone from the Panel, the one
 ///   line naming where a reading came from has to name the bundled scenario being read — the
 ///   picker's caption did that before, and a Panel reading `cap-both` while saying nothing is a
-///   Panel that lost its provenance. The wording lives in `PanelModel` for the same reason
-///   `dataAgeText` and `baselineCaption` do: panel wording worth having under test.
+///   Panel that lost its provenance. The wording lives in `PanelModel` for the standing reason
+///   #12's age sentence and #14's Baseline sentence lived there: panel wording worth having
+///   under test. #18 folded source, mode, and age into that one line.
 /// - **AC 3, invariant 14 across two windows.** The read that used to be triggered by a Board
 ///   remembered was wired in the Panel's own `onAppear` — fine while the form lived on the
 ///   Panel, wrong now that it lives in Settings, which can be the first window opened. The
@@ -63,19 +64,21 @@ final class SettingsWindowTests: XCTestCase {
         let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
         await waitUntil { model.instrument != nil }
 
-        XCTAssertEqual(model.sourceLine, "Fixture — walking-skeleton")
+        XCTAssertEqual(model.sourceLine, "Fixture · walking-skeleton")
 
         model.scenario = .capBoth
         await waitUntil { model.source == .fixture(.capBoth) && model.instrument != nil }
         XCTAssertEqual(
-            model.sourceLine, "Fixture — cap-both",
+            model.sourceLine, "Fixture · cap-both",
             "the line follows the picker's choice into the new window and stays on the Panel"
         )
     }
 
-    /// The live and cached branches of the same line — one vocabulary for the caption, so the
-    /// Panel cannot say "Live" over a corpus reading or hide the Board behind the move.
-    func test_sourceLine_onABoardRead_namesTheBoardAndTheIdentity() async throws {
+    /// The live and cached branches of the same line (#18's compression): the mode of the read
+    /// and the age of its data in one line, so the Panel cannot say "Live" over a corpus
+    /// reading or let a Cached Read pass as a fresh one. The Board and the identity the read
+    /// was made as are Settings' to name now.
+    func test_sourceLine_onABoardRead_saysLiveWithTheAgeOfTheData() async throws {
         try configureCredential()
         settings.boardID = boardID
         let reads = Reads()
@@ -84,7 +87,7 @@ final class SettingsWindowTests: XCTestCase {
         await model.windowDidAppear()
 
         XCTAssertEqual(model.source, .live(boardID: boardID))
-        XCTAssertEqual(model.sourceLine, "Live — Board 172, as dgimaletdinov")
+        XCTAssertEqual(model.sourceLine, "Live · 0m")
     }
 
     func test_sourceLine_onACachedRead_saysCached() async throws {
@@ -100,7 +103,7 @@ final class SettingsWindowTests: XCTestCase {
         await offline.windowDidAppear()
 
         XCTAssertEqual(offline.source, .cached(boardID: boardID))
-        XCTAssertEqual(offline.sourceLine, "Cached — Board 172, as dgimaletdinov")
+        XCTAssertEqual(offline.sourceLine, "Cached · 0m")
     }
 
     // MARK: - Invariant 14 across two windows (AC 3)
@@ -169,7 +172,7 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertEqual(reads.count, 1, "the revocation costs no second request")
         XCTAssertNotNil(panel.instrument, "and the corpus replaces the reading the access went with")
         XCTAssertEqual(
-            panel.sourceLine, "Fixture — walking-skeleton",
+            panel.sourceLine, "Fixture · walking-skeleton",
             "with the Board gone, the source line is still the Panel's only provenance"
         )
     }
@@ -191,13 +194,13 @@ final class SettingsWindowTests: XCTestCase {
         await waitUntil { panel.source == .fixture(panel.scenario) }
         await wait(seconds: 0.05)
         XCTAssertEqual(reads.count, 1, "dropping onto the corpus issues no request")
-        XCTAssertEqual(panel.sourceLine, "Fixture — walking-skeleton")
+        XCTAssertEqual(panel.sourceLine, "Fixture · walking-skeleton")
 
         panel.switchToBoard()
         await waitUntil { reads.count >= 2 }
         await wait(seconds: 0.05)
         XCTAssertEqual(reads.count, 2, "asking for the Board again is exactly one live read")
-        XCTAssertEqual(panel.sourceLine, "Live — Board 172, as dgimaletdinov")
+        XCTAssertEqual(panel.sourceLine, "Live · 0m")
     }
 
     /// The failure the move creates, closed in the model rather than by the picker's
@@ -224,7 +227,7 @@ final class SettingsWindowTests: XCTestCase {
         await waitUntil { panel.source == .fixture(.capBoth) && panel.instrument != nil }
         await wait(seconds: 0.05)
         XCTAssertEqual(reads.count, 1, "and the switch onto the corpus still costs none")
-        XCTAssertEqual(panel.sourceLine, "Fixture — cap-both")
+        XCTAssertEqual(panel.sourceLine, "Fixture · cap-both")
     }
 
     // MARK: - Helpers

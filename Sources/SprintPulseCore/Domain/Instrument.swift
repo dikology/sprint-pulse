@@ -96,7 +96,8 @@ public struct Instrument: Equatable, Sendable {
     /// where a cache scenario carries one, and otherwise the `now.json` it pins (#9) — a scenario
     /// *is* an observation taken then.
     ///
-    /// The panel's age line reads `PanelModel.dataReadAt` rather than this field, deliberately:
+    /// The panel's source line words its age from `PanelModel.dataReadAt` rather than this field,
+    /// deliberately:
     /// the states that are not readings — No Work Assigned above all, since it shows a Team Scope
     /// total — display fetched figures that carry no `Instrument`, and one line with two sources
     /// would be a contradiction waiting to happen (#12).

@@ -41,7 +41,7 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 /// evaluation order rather than a caption (#2's boundary, still holding).
 @MainActor
 final class PanelModel: ObservableObject {
-    /// Where the panel's reading comes from, for the caption and for what a read is allowed to do.
+    /// Where the panel's reading comes from, for the source line and for what a read is allowed to do.
     enum Source: Equatable {
         /// The bundled corpus, chosen by the picker: the reading whenever the app has no complete
         /// live configuration (#10, #11), and also the reading whenever the Operator asks for it
@@ -122,69 +122,36 @@ final class PanelModel: ObservableObject {
     @Published private(set) var readMode: ReadMode
 
     /// The moment the data behind whatever is on screen was read, and which Board it was read from
-    /// — `nil` and `nil` together when nothing on screen came from a fetch at all. The panel's age
-    /// line has one source, and it is not the wall clock: a reading stays on screen for as long as
-    /// the window is open, and a caption computed from "now minus then" would have to be re-timed
-    /// to stay true — which this app never does, having no timer anywhere in it (#11). So the
-    /// instant is carried and the view words it (#12's AC 3: the age is always visible).
+    /// — `nil` and `nil` together when nothing on screen came from a fetch at all. It is the one
+    /// source of the age the source line speaks: carried as an instant, because a reading stays on
+    /// screen for as long as the window is open and the app has no timer to re-time anything
+    /// (#11) — `sourceLine` words the age when the line is drawn, and nothing re-words it between
+    /// draws (#12's AC 3: the age is always visible).
     ///
     /// Both together answer one question — *where is this reading from* — and it is the question
-    /// `source` cannot answer alone: a Board's cached read is that Board's, and neither the age line
-    /// nor a "Cached — Board N" caption may be attached to a reading fetched from somewhere else. A
-    /// fixture read leaves them `nil`, because a bundled scenario is not a fetch; the moment it
-    /// pins for itself (#9) still reaches the reading as `Instrument.readAt`.
+    /// `source` cannot answer alone: a Board's cached read is that Board's, and neither an age nor
+    /// a "Cached" may be attached to a reading fetched from somewhere else. A fixture read leaves
+    /// them `nil`, because a bundled scenario is not a fetch; the moment it pins for itself (#9)
+    /// still reaches the reading as `Instrument.readAt`.
     @Published private(set) var dataReadAt: Date?
     @Published private(set) var dataBoardID: Int?
 
-    /// How old the data on screen is, in the words the panel puts beside the Board it belongs to,
-    /// or `nil` when nothing has been fetched.
+    /// The Baseline Points row's value (#14 AC 6, suffixed per #18): the recorded Points and the
+    /// day this sprint was first seen — `26 · 8 Sep 2026` — so a Scope Delta always reads *since
+    /// when* without a sentence having to say so.
     ///
-    /// Here rather than in the view because it is the only comparison the panel makes, and it needs
-    /// a clock: `PanelModel` is the type that owns "now" (#11), and a caption computed from "now
-    /// minus then" cannot be re-timed by an app with no timer in it. The wording is deliberately
-    /// calendar-day coarse — "today", "yesterday", a date — because that is what survives being
-    /// printed once and read an hour later. It is *not* the domain's verdict: the day the
-    /// forecast was withdrawn over is `WorkingCalendar`'s, and on a Saturday "yesterday" and
-    /// "still the current Working Day" are both true of the same read.
-    var dataAgeText: String? {
-        guard let readAt = dataReadAt else { return nil }
-        let calendar = Calendar.current
-        let now = Date()
-        let day: String
-        if calendar.isDate(readAt, inSameDayAs: now) {
-            day = "today"
-        } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-                  calendar.isDate(readAt, inSameDayAs: yesterday) {
-            day = "yesterday"
-        } else {
-            day = "on \(Self.readDayFormatter.string(from: readAt))"
-        }
-        var line = "Data read \(day) at \(Self.readTimeFormatter.string(from: readAt))"
-        if case .cached = source {
-            // The one sentence #12 exists for: this reading is old, and it is not broken.
-            line += " — the last read that got through"
-        }
-        return line + "."
-    }
-
-    /// The Baseline row's own date (#14 AC 6): the moment this sprint was first seen, printed beside
-    /// the Points it recorded, so a Scope Delta always says *since when*.
+    /// Worded off the reading handed to it rather than out of a slot, exactly as the row is drawn
+    /// from the `Instrument` it belongs to: the value can only ever attach to the Delta carrying
+    /// that Baseline (#12's discipline of `dataReadAt` and `dataBoardID` travelling together). No
+    /// clock is involved: this states when the Baseline *was* taken and never how long ago, so
+    /// unlike an age there is nothing here to go stale beside an open window.
     ///
-    /// Read off the standing reading rather than out of the slot, so the sentence can only ever be
-    /// attached to the Delta it belongs to — the same discipline as `dataReadAt` and `dataBoardID`
-    /// travelling together (#12). No clock is involved: this states when the Baseline *was* taken and
-    /// never how long ago, so unlike an age it cannot go stale beside an open window.
-    ///
-    /// The qualifying clause is unconditional on purpose, and it is the ticket's honesty requirement
-    /// rather than a hedge. A Sprint Baseline is defined as the first *observation* of a sprint, not
-    /// as its first day; whether the two coincided is not knowable here — Jira reports a start date,
-    /// and the app may have been pointed at the Board a week after it — so the sentence names which
-    /// of the two it is showing instead of claiming the one it cannot check.
-    var baselineCaption: String? {
-        guard let capturedAt = instrument?.baselineCapturedAt else { return nil }
-        return "Baseline taken \(Self.readDayFormatter.string(from: capturedAt)) at "
-            + "\(Self.readTimeFormatter.string(from: capturedAt)) — "
-            + "the first time Sprint Pulse saw this sprint, which may be partway through it."
+    /// What the sentence used to hedge is now simply not claimed: a Sprint Baseline is the first
+    /// *observation* of a sprint, not its first day, and the dated figure states which moment it
+    /// is — day one or day six is the reader's to know from the day itself.
+    func baselineRowValue(for instrument: Instrument) -> String {
+        "\(Self.formatted(instrument.baselinePoints)) · "
+            + Self.dayFormatter.string(from: instrument.baselineCapturedAt)
     }
 
     /// The panel's line for a read that failed, held apart from `content` so a failure leaves the
@@ -310,10 +277,10 @@ final class PanelModel: ObservableObject {
     /// The Board the reading belongs to, whether it arrived from the fetch that just ran or from
     /// the one that last got through; `nil` while the panel is reading the corpus.
     ///
-    /// One branch on `source` for everything the two connections do differently — the caption, the
-    /// fixture picker, the Refresh control — so the view never asks the same question three times
-    /// (#11). A cached read answers it the same way: it is still that Board's read, and asking the
-    /// Board again is still what Refresh is for (#12).
+    /// One branch on `source` for everything the two connections do differently — the source
+    /// line, the fixture picker, the Refresh control — so the view never asks the same question
+    /// three times (#11). A cached read answers it the same way: it is still that Board's read,
+    /// and asking the Board again is still what Refresh is for (#12).
     var boardID: Int? {
         switch source {
         case .fixture: return nil
@@ -335,27 +302,53 @@ final class PanelModel: ObservableObject {
         liveRead?.identity ?? fixtureIdentity
     }
 
-    /// The Panel's one line naming where the reading came from (#17).
+    /// The Panel's one line naming where the reading came from and how old its data is (#18):
+    /// `Live · 4m`, `Cached · 3h`, `Fixture · cap-both`.
     ///
-    /// Here rather than in the view because it is panel wording worth having under test, the same
-    /// standing as `dataAgeText` and `baselineCaption` (#12, #14) — and because the line gained a
-    /// case with the move. The scenario picker the Panel used to carry named the bundled scenario
-    /// by showing it; Settings carries the picker now, so the caption has to say which scenario is
-    /// on screen. The raw value is the corpus's own name — the directory `FixtureCorpusTests`
-    /// pins — not the picker's descriptive title, because the line's job is provenance, not sales.
+    /// The compression is the ticket's; the discipline underneath it is unchanged. The wording
+    /// lives here rather than in the view because stating an age needs a clock and the clock is
+    /// the platform concern this type owns (#11) — the same standing `dataAgeText` and
+    /// `baselineCaption` had, which this line replaces. The age is spoken when the line is drawn
+    /// and never re-timed: the app still has no timer, so the figure is the age at that moment,
+    /// exactly as "Data read yesterday at 09:14" was.
     ///
-    /// Live and cached answer in the shape the caption always had: which Board was asked, and as
-    /// whom (#11) — the one thing on the Panel the Operator cannot reproduce from a fixture, and
-    /// it stays even though the connection's configuration moved out.
+    /// The Board and the identity the read was made as are gone from this line (#17): Settings
+    /// names the configured Board and the resolved identity, and the two states that need a
+    /// Board or an identity to be read at all — no active sprint, no work assigned — name them
+    /// themselves. What the line keeps is the claim invariant 15 made it say: live or cached,
+    /// and how old. For a fixture the second element is the scenario rather than an age, because
+    /// a bundled scenario is neither a fetch nor a keep; its name is the corpus's own — the
+    /// directory `FixtureCorpusTests` pins — not the picker's descriptive title, because the
+    /// line's job is provenance, not sales.
     var sourceLine: String {
         switch source {
         case .fixture(let scenario):
-            return "Fixture — \(scenario.rawValue)"
-        case .live(let boardID):
-            return "Live — Board \(boardID), as \(readingIdentity.name)"
-        case .cached(let boardID):
-            return "Cached — Board \(boardID), as \(readingIdentity.name)"
+            return "Fixture · \(scenario.rawValue)"
+        case .live:
+            return modeWithAge("Live")
+        case .cached:
+            return modeWithAge("Cached")
         }
+    }
+
+    /// The mode word with the age of the data behind it when there is one. A Board that has
+    /// answered nothing yet — the window opened, nothing was cached, the request is still in
+    /// flight — says only `Live`: there is no instant on screen yet to be old against.
+    private func modeWithAge(_ mode: String) -> String {
+        guard let readAt = dataReadAt else { return mode }
+        return "\(mode) · \(Self.shortAge(of: readAt))"
+    }
+
+    /// Minutes under an hour, hours under a day, days beyond — the unit the reader actually
+    /// compares the data against, since a read older than a day is judged by days, not by
+    /// hours nobody counts. Spoken from the wall clock at the moment the line is drawn; the
+    /// day-grain verdict on the read itself stays `WorkingCalendar`'s (#12).
+    private static func shortAge(of readAt: Date) -> String {
+        let minutes = Int(max(0, Date().timeIntervalSince(readAt)) / 60)
+        if minutes < 60 { return "\(minutes)m" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h" }
+        return "\(hours / 24)d"
     }
 
     /// The configuration a live read *could* use: a stored credential, the base URL and identity
@@ -449,7 +442,7 @@ final class PanelModel: ObservableObject {
     /// screen whenever it is wanted.
     ///
     /// Nothing is revoked, nothing is fetched, and nothing is written to the drawer or the
-    /// Baseline slot: `load`'s fixture branch clears the Board's caption and age line with it, and
+    /// Baseline slot: `load`'s fixture branch clears the Board's source line with it, and
     /// a fixture read persists neither. A standing failure sentence goes too — it was about a
     /// Board the panel has stopped reading, and leaving it up would be the panel complaining about
     /// a connection nobody is asking anything of.
@@ -459,7 +452,7 @@ final class PanelModel: ObservableObject {
 
     /// The Operator asked for their Board again (#15). This is a live read they initiated, on the
     /// same standing as pressing Refresh or remembering a Board (#11, invariant 14): they came for
-    /// what the Board says now, and leaving the corpus's reading on screen under a Board's caption
+    /// what the Board says now, and leaving the corpus's reading on screen under a Board's name
     /// is the rebranding #12 already refuses.
     ///
     /// The ask resolves back to the corpus if the connection is no longer complete — the credential
@@ -502,7 +495,7 @@ final class PanelModel: ObservableObject {
     /// Operator who opened the panel came for the answer rather than for the news about the
     /// connection. What the request then does is replace it — or leave it standing, with the
     /// failure named beside it. `loadLive` claims `.live` for itself once the Board has answered,
-    /// so the caption never says "Live" over a reading the fetch has not produced yet.
+    /// so the source line never says "Live" over a reading the fetch has not produced yet.
     func load() async {
         if let configuration = liveRead {
             showCachedRead(of: configuration)
@@ -596,8 +589,8 @@ final class PanelModel: ObservableObject {
         let fetched = try await snapshot(
             from: gateway, chosenSprintID: settings.trackedSprintID
         )
-        // The Board answered, so anything now on screen came out of this fetch and the caption may
-        // say "Live" again (#11, #12).
+        // The Board answered, so anything now on screen came out of this fetch and the source
+        // line may say "Live" again (#11, #12).
         source = .live(boardID: configuration.boardID)
         dataBoardID = configuration.boardID
         guard let snapshot = fetched else {
@@ -648,9 +641,10 @@ final class PanelModel: ObservableObject {
     /// 2. The slot holds nothing (nothing has got through yet, it belongs to another Board, or the
     ///    write failed) but this Board's reading is already on screen from earlier in the session —
     ///    #11's rule stands, it keeps displaying, and it did not come from this fetch either.
-    /// 3. Neither. What is on screen belongs to another Board or to the corpus, and no caption of
-    ///    this Board's may be put on it: a bundled scenario's Points are not this sprint's cached
-    ///    read any more than another Board's would be. The panel has read nothing, and the request
+    /// 3. Neither. What is on screen belongs to another Board or to the corpus, and no
+    ///    provenance of this Board's may be put on it: a bundled scenario's Points are not this
+    ///    sprint's cached read any more than another Board's would be. The panel has read
+    ///    nothing, and the request
     ///    about to be made will either say something or fail and be named.
     ///
     /// A state that is not a reading — the active-sprint prompt, a Board with nothing active — is
@@ -847,22 +841,13 @@ final class PanelModel: ObservableObject {
         }
     }
 
-    /// The day a read belongs to, for the age line. The year is spelled out because the reading an
-    /// Operator is trusting may predate the year they think they are in, and "on 3 Jan" is the one
-    /// sentence that could quietly be a year wrong.
-    private static let readDayFormatter: DateFormatter = {
+    /// A moment to the day, for the Baseline row's suffix. The year is spelled out because a
+    /// Baseline an Operator is measuring a Delta against may predate the year they think they
+    /// are in, and `· 3 Jan` is the fragment that could quietly be a year wrong.
+    private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "d MMM yyyy"
-        return formatter
-    }()
-
-    /// The hour and minute of the read, in the Operator's own clock — the age line is read against
-    /// the moment the Operator is looking at it, not against a UTC sprint date.
-    private static let readTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "HH:mm"
         return formatter
     }()
 

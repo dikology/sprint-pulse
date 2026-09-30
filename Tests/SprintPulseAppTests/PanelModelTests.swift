@@ -662,63 +662,74 @@ final class PanelModelTests: XCTestCase {
         let instrument = try XCTUnwrap(browsing.instrument)
         XCTAssertTrue(instrument.predatesCurrentWorkingDay, "read on Friday, observed on Monday")
         XCTAssertNil(browsing.dataReadAt, "and a fixture is not a fetch")
+        // The compressed source line claims neither an age nor a cache for a fixture: a bundled
+        // scenario is neither a fetch nor a keep (#12).
+        XCTAssertEqual(browsing.sourceLine, "Fixture · cache-predates-working-day")
         XCTAssertEqual(cache.load(), stored, "the corpus left the cached read alone")
     }
 
-    /// #12's AC 3, at the seam that can be tested: the age line is the model's sentence, not the
-    /// view's, because stating an age needs a clock and the clock is a platform concern. Day-grain
-    /// wording only — the panel has no timer to keep a countdown true, so it never prints one.
-    func test_theAgeLineNamesTheDayOfTheReadAndNotACountdown() async throws {
+    /// #18's one source line states the age beside the mode, in the unit a reader acts on:
+    /// minutes while a read is fresh, hours within the day, days once it is older than a day.
+    /// Spoken at the moment the line is drawn and never re-timed — the app still has no timer
+    /// (#11) — so it states the age *then*, the way "Data read yesterday at" was the age at the
+    /// window open. Invariant 15 survives the compression: a Cached Read says Cached, and how
+    /// old it is, on the same line.
+    func test_theSourceLineSaysHowOldTheDataIs() async throws {
         try configureLive()
         let online = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
         await online.windowDidAppear()
+        XCTAssertEqual(online.sourceLine, "Live · 0m", "a fetch that just got through is read as fresh")
 
-        XCTAssertEqual(online.dataAgeText, "Data read today at " + Self.time(online.dataReadAt) + ".")
-
-        // A read from yesterday: the date gives way to "yesterday", never to a number of hours.
-        // Day-grained on purpose — an hour offset would make this assertion depend on the clock
-        // time the suite happens to run at.
         let entry = try XCTUnwrap(cache.load())
-        let calendar = Calendar.current
-        func aged(_ days: Int) -> CachedSprint {
+        func aged(_ seconds: TimeInterval) -> CachedSprint {
             CachedSprint(
                 boardID: entry.boardID,
-                readAt: calendar.date(byAdding: .day, value: -days, to: entry.readAt)!,
+                readAt: entry.readAt.addingTimeInterval(-seconds),
                 snapshot: entry.snapshot
             )
         }
 
-        cache.save(aged(1))
-        let offline = makeModel(
+        cache.save(aged(4 * 60))
+        let minutes = makeModel(
             reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
             into: Reads()
         )
-        await offline.windowDidAppear()
+        await minutes.windowDidAppear()
+        XCTAssertEqual(minutes.sourceLine, "Cached · 4m")
 
-        let age = try XCTUnwrap(offline.dataAgeText)
-        XCTAssertTrue(age.hasPrefix("Data read yesterday at "), age)
-        // #12's AC 4 in one clause: the reading is old, and it is not broken.
-        XCTAssertTrue(age.contains("the last read that got through"), age)
-        XCTAssertFalse(age.contains("ago"), "no countdown to go stale beside the window")
-
-        // Older still: an absolute date, which is checkable by hand and cannot drift.
-        cache.save(aged(3))
-        let dated = makeModel(
+        cache.save(aged(3 * 60 * 60))
+        let hours = makeModel(
             reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
             into: Reads()
         )
-        await dated.windowDidAppear()
-        let datedText = try XCTUnwrap(dated.dataAgeText)
-        XCTAssertTrue(datedText.hasPrefix("Data read on "), datedText)
-        XCTAssertFalse(datedText.contains("today"), datedText)
-        XCTAssertFalse(datedText.contains("yesterday"), datedText)
-    }
+        await hours.windowDidAppear()
+        XCTAssertEqual(hours.sourceLine, "Cached · 3h")
 
-    private static func time(_ date: Date?) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date ?? Date())
+        cache.save(aged(20 * 60 * 60))
+        let late = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await late.windowDidAppear()
+        XCTAssertEqual(late.sourceLine, "Cached · 20h", "the hour band reaches to the day, not to noon")
+
+        // Past a day the day is the unit: an hour count of a read from last week states a
+        // figure nobody compares against anything.
+        cache.save(aged(25 * 60 * 60))
+        let days = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await days.windowDidAppear()
+        XCTAssertEqual(days.sourceLine, "Cached · 1d")
+
+        cache.save(aged(3 * 24 * 60 * 60 + 60 * 60))
+        let older = makeModel(
+            reading: Reading(sprints: "", issues: "", error: .unreachableHost(host: "jira.example.com")),
+            into: Reads()
+        )
+        await older.windowDidAppear()
+        XCTAssertEqual(older.sourceLine, "Cached · 3d")
     }
 
     /// The one place the panel calls a reading cached without re-evaluating it: the standing
@@ -853,10 +864,12 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(baselines.load(sprintID: 2), sprintTwo)
     }
 
-    /// AC 6 on the panel. The corpus's `baseline-cold-start` *is* the day-six install: its sprint
-    /// began on 1 Sep and the scenario is observed on 8 Sep, so the Baseline it captures is a week
-    /// late, and the only honest thing to do about that is say which moment the row belongs to. A
-    /// `0` Delta beside a silent "Baseline Points" is the implication this test forbids.
+    /// AC 6 on the panel, compressed by #18: the capture moment rides the Baseline row's value
+    /// — `26 · 8 Sep 2026`, the fixture's own Points and its `now.json`'s day — because a `0`
+    /// Delta beside an undated "Baseline Points" reads as "this sprint has never grown" when all
+    /// the app knows is that it has not grown *since the day it arrived*. The sentence that used
+    /// to qualify the moment is prose now; the date beside the figure states the same fact, and
+    /// it stays the model's wording because it is wording worth having under test (#14).
     func test_theBaselineRowNamesTheMomentItWasTakenNotTheSprintsFirstDay() async throws {
         let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
         model.scenario = .baselineColdStart
@@ -865,21 +878,27 @@ final class PanelModelTests: XCTestCase {
         let instrument = try XCTUnwrap(model.instrument)
         XCTAssertEqual(instrument.scopeDelta, 0, "a cold start has witnessed no movement yet")
 
-        let caption = try XCTUnwrap(model.baselineCaption)
+        let value = model.baselineRowValue(for: instrument)
         XCTAssertTrue(
-            caption.contains(Self.day(instrument.baselineCapturedAt)),
-            "the row names the day the Baseline was taken: \(caption)"
+            value.hasPrefix("26 · "),
+            "the row starts with the Points the day-six install recorded: \(value)"
         )
-        XCTAssertFalse(caption.contains("1 Sep"), "not the day the sprint started, which nobody saw")
-        for claim in ["day one", "first day", "original", "start"] {
-            XCTAssertFalse(caption.contains(claim), "the panel claims \(claim): \(caption)")
+        XCTAssertTrue(
+            value.contains(Self.day(instrument.baselineCapturedAt)),
+            "and names the day the Baseline was taken: \(value)"
+        )
+        XCTAssertFalse(value.contains("1 Sep"), "not the day the sprint started, which nobody saw")
+        for claim in ["day one", "first day", "original", "start", "taken"] {
+            XCTAssertFalse(value.contains(claim), "the row claims \(claim): \(value)")
         }
 
         /// The other half of AC 6, and the half a cold start cannot test alone: when the Baseline
         /// *predates* the read, the row must date itself to the Baseline. `scope-growth` bundles a
         /// day-one `baseline.json` taken on 1 Sep while the scenario is observed on 8 Sep, so the two
-        /// moments are a week apart — a caption reading `instrument.readAt` would print the wrong day
-        /// and every assertion above would still pass.
+        /// moments are a week apart — a suffix reading `instrument.readAt` would print the wrong day
+        /// and every assertion above would still pass. The row is worded off the instrument handed
+        /// to it, so a value can only ever attach to the Delta that carries that Baseline; with no
+        /// reading on screen there is no row at all (#12's caption discipline, kept structurally).
         let held = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
         held.scenario = .scopeGrowth
         await waitUntil { held.instrument != nil }
@@ -890,21 +909,19 @@ final class PanelModelTests: XCTestCase {
             heldReading.baselineCapturedAt, heldReading.readAt,
             "the scenario keeps the two moments apart, or this test proves nothing"
         )
-        let heldCaption = try XCTUnwrap(held.baselineCaption)
+        let heldValue = held.baselineRowValue(for: heldReading)
         XCTAssertTrue(
-            heldCaption.contains(Self.day(heldReading.baselineCapturedAt)),
-            "the caption dates the Baseline: \(heldCaption)"
+            heldValue.hasPrefix("13 · "),
+            "the stored Baseline's Points, not the grown sprint's: \(heldValue)"
+        )
+        XCTAssertTrue(
+            heldValue.contains(Self.day(heldReading.baselineCapturedAt)),
+            "the row dates the Baseline: \(heldValue)"
         )
         XCTAssertFalse(
-            heldCaption.contains(Self.day(heldReading.readAt)),
-            "and not the moment it happened to be re-read: \(heldCaption)"
+            heldValue.contains(Self.day(heldReading.readAt)),
+            "and not the moment it happened to be re-read: \(heldValue)"
         )
-
-        // A Board configured but not yet read: no reading on screen, so no Baseline to date. The
-        // caption belongs to a reading and follows it off, the way the age line does (#12).
-        try configureLive()
-        let unread = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
-        XCTAssertNil(unread.baselineCaption)
     }
 
     private static func day(_ date: Date) -> String {

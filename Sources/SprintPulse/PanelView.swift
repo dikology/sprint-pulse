@@ -13,15 +13,17 @@ import SprintPulseCore
 ///
 /// Below the header sits one state of `PanelModel.Content` (#11): the reading, an empty My Work,
 /// a sprint that has to be named, a Board with no active sprint, or nothing read yet. A failed
-/// fetch is not one of them — it is a line beside whatever was last read, and since #12 the caption
-/// above it says whether that was the Board a moment ago or the cache, and when the data behind it
-/// was taken.
+/// fetch is not one of them — it is a line beside whatever was last read, and the source line
+/// above says whether that reading came from the Board or the cache, and how old its data was
+/// when the line was drawn.
 ///
 /// #17 took the configuration out: the connection, the Board and Estimate fields, the Status Map
-/// editor, and the scenario picker are the Settings window's now. What stays is the reading,
-/// Refresh, the `Unmapped Status` menu resolved where it is met (#13's exception, the same
-/// `StatusMappingMenu` the Settings editor carries), and the two ways out of a still-`MenuBarExtra`
-/// app until the notch host gives them a new home.
+/// editor, and the scenario picker are the Settings window's now. #18 took the prose out — no
+/// caption annotates a figure, and the states the invariants require keep their wording only where
+/// the wording *is* the state (`docs/agents/product.md`, Surfaces). What stays is the reading,
+/// Refresh, the one exception — the `Unmapped Status` warning's Flow State menu, resolved where it
+/// is met (#13's exception, the same `StatusMappingMenu` the Settings editor carries) — and the
+/// two ways out of a still-`MenuBarExtra` app until the notch host gives them a new home.
 struct PanelView: View {
     @ObservedObject var panel: PanelModel
 
@@ -56,16 +58,16 @@ struct PanelView: View {
         }
     }
 
-    /// What the panel is reading, and the one control that asks for a fresh live read. Since #17
-    /// this is the whole chrome above the reading: one line naming the source — bundled scenario,
-    /// Board, or the last read that got through — and Refresh, offered only to a Board read,
-    /// because a fixture costs no request and choosing one is the ask.
+    /// What the panel is reading and how old its data is — one line (#18) — and the one control
+    /// that asks for a fresh live read. Since #17 this is the whole chrome above the reading;
+    /// since #18 that chrome is a single stated fact, because the instrument states and does not
+    /// annotate itself. Refresh belongs only to a Board read: a fixture costs no request and
+    /// choosing one is the ask.
     @ViewBuilder
     private var readingSource: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // The model words it, as it words the age line: the Panel's provenance is panel wording
-            // worth having under test, and with the picker gone this line is the only thing that
-            // names a fixture reading.
+            // The model words it: provenance and age are panel wording worth having under test,
+            // and stating the age needs the clock only the model owns (#11).
             Text(panel.sourceLine)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -74,11 +76,6 @@ struct PanelView: View {
                 Button("Refresh") {
                     Task { await panel.refresh() }
                 }
-                dataAgeLine
-                Text("Reads when this window opens and on Refresh. Never on a timer.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -92,23 +89,6 @@ struct PanelView: View {
             OpenSettingsButton()
         } else {
             LegacySettingsButton()
-        }
-    }
-
-    /// How old the data on screen is (#12 AC 3: always visible, not only to whoever happens to
-    /// read the panel at the right moment).
-    ///
-    /// The sentence is `PanelModel.dataAgeText`'s, not this view's: stating an age needs a clock,
-    /// and the clock is the platform concern the model exists to own (#11). It is also the only
-    /// comparison anywhere between the domain and the screen, which makes it the one piece of panel
-    /// wording worth having under test — a view function would not be.
-    @ViewBuilder
-    private var dataAgeLine: some View {
-        if let age = panel.dataAgeText {
-            Text(age)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -129,10 +109,14 @@ struct PanelView: View {
                 Text("No active sprint")
                     .font(.subheadline.bold())
                     .accessibilityAddTraits(.isHeader)
-                Text("The Board reports no sprint in the active state, so there is nothing to read. Sprint Pulse waits for one to start rather than forecasting the last closed sprint.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // The Board the state was reached on — the one fact the heading cannot be read
+                // without once a Board can change under the panel. What the state means is
+                // CONTEXT's to say; the Panel states it (#18).
+                if let boardID = panel.boardID {
+                    Text("Board \(boardID)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
 
         case .nothing:
@@ -151,9 +135,10 @@ struct PanelView: View {
 
     /// A read that failed, beside whatever was last read (#11). The sentence comes from the
     /// model — the panel holds no failure vocabulary of its own — and the previous reading stays
-    /// on screen above it, which is the difference between stale and broken. #12 gave that reading
-    /// an age and a "Cached" caption: off the VPN this line is the *least* interesting thing on the
-    /// panel, because the numbers above it are still the ones the Operator came for.
+    /// on screen above it, which is the difference between stale and broken. #12 gave that
+    /// reading an age and a "Cached" label and #18 joined them into the source line above; off
+    /// the VPN this line is the *least* interesting thing on the panel, because the numbers
+    /// above it are still the ones the Operator came for.
     @ViewBuilder
     private func problemLine(_ message: String) -> some View {
         Text(message)
@@ -165,9 +150,10 @@ struct PanelView: View {
 
     /// The empty subject, as its own state (#11). The forecast ran over an empty My Work and
     /// answered `Finished`; showing that answer here would be the confident zero this state exists
-    /// to prevent, so the reading is replaced rather than annotated. Team Scope stays: it is the
-    /// one figure that lets the Operator tell "the sprint is full and none of it is mine" from
-    /// "the sprint is empty".
+    /// to prevent, so the reading is replaced rather than annotated — replaced, since #18, by the
+    /// heading and the identity the work was looked for under, and nothing in between. Team Scope
+    /// stays: it is the one figure that lets the Operator tell "the sprint is full and none of it
+    /// is mine" from "the sprint is empty" (invariant 10).
     @ViewBuilder
     private func noWorkAssigned(sprintName: String, teamScopePoints: Double) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -177,16 +163,14 @@ struct PanelView: View {
             Text("No work assigned")
                 .font(.subheadline.bold())
                 .accessibilityAddTraits(.isHeader)
-            Text("No Issue in this sprint is assigned to \(panel.readingIdentity.name), the identity Jira resolved, so there is no forecast to make — and this is not the same as having finished. Check the identity and the Board above.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            pointsRow("Team Scope", teamScopePoints)
-                .foregroundStyle(.secondary)
-            Text("Every Issue in the sprint, not only yours. No forecast is computed over team scope.")
+            // The identity the resolved read matched no Issue against (#18's reduction). Whether
+            // that identity is plausible is the Operator's judgement — which is why #11 put it on
+            // screen at all; the sentence saying so is what #18 took away.
+            Text(panel.readingIdentity.name)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            pointsRow("Team Scope", teamScopePoints)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -199,7 +183,10 @@ struct PanelView: View {
             Text("Which sprint is being tracked?")
                 .font(.subheadline.bold())
                 .accessibilityAddTraits(.isHeader)
-            Text("This Board reports \(candidates.count) sprints in the active state. Sprint Pulse forecasts one sprint and does not choose which. The answer is remembered for the life of the sprint you name.")
+            // The one fact the question is asked on, stated; what the answer means for the app
+            // ("remembered for the life of that sprint") is CONTEXT's "Active Sprint", not the
+            // Panel's to repeat (#18).
+            Text("This Board reports \(candidates.count) sprints in the active state.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -274,16 +261,14 @@ struct PanelView: View {
         // the Operator can see which column to look at. Its Issues are in no set below. #13 gave the
         // warning the other half of what it needs: the status arrives with a menu beside it, so
         // encountering one is a condition to resolve here rather than a fact to go and act on
-        // somewhere else. The icon and colour emphasise it; the words carry it (#9).
+        // somewhere else. The icon and colour emphasise it; the words carry it (#9) — and since
+        // #18 they carry only the status, because exclusion-and-recompute is the domain's rule
+        // (CONTEXT "Unmapped Status"), not a sentence the Panel repeats.
         if !instrument.unmappedStatuses.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 Label("Unmapped status", systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline.bold())
                     .foregroundStyle(.orange)
-                Text("Its Issues are excluded from the forecast totals until the status is mapped. Choose what each one means and the reading above is recomputed — no request, no Refresh.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 ForEach(instrument.unmappedStatuses, id: \.self) { jiraStatus in
                     HStack {
                         Text(jiraStatus)
@@ -310,15 +295,11 @@ struct PanelView: View {
         pointsRow("Completed", instrument.completedPoints)
         pointsRow("Dropped", instrument.droppedPoints)
 
-        HStack {
-            Text("Unestimated (Actionable / Waiting)")
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text("\(instrument.unestimatedCount) issue\(instrument.unestimatedCount == 1 ? "" : "s")")
-                .font(.callout.monospacedDigit())
-        }
-        .font(.callout)
-        .accessibilityElement(children: .combine)
+        // The CONTEXT term, stated bare. The parenthesised scope this row used to carry was the
+        // only label-plus-figure pair measured to overflow the Panel's 280pt column (#18's
+        // no-truncation AC), and where the count sits is what the Actionable and Waiting
+        // sections above already show — the figure states, it does not annotate itself.
+        row("Unestimated", "\(instrument.unestimatedCount) issue\(instrument.unestimatedCount == 1 ? "" : "s")")
 
         // The scope figures (#8): what the sprint holds now, what it held when first observed,
         // and the difference. Both operands sit beside the Delta so it stays reproducible by
@@ -329,34 +310,16 @@ struct PanelView: View {
         // regardless of assignee. It is one number with one row, not a second figure to
         // reconcile, and it is deliberately the dimmest thing on the panel — context, never a
         // reading. No forecast, Confidence State, or rate is ever attached to team scope
-        // (ADR-0001, CONTEXT invariant 6); the honest way to show that is a bare total with
-        // the disclaimer beside it, and nothing else.
+        // (ADR-0001, CONTEXT invariant 6); #18 took the disclaimer beside it out, because the
+        // honest way to show a rule the Panel never breaks is the bare total itself — named for
+        // what it counts, dimmed, carrying no rate.
         pointsRow("Team Scope", instrument.liveSprintPoints)
             .foregroundStyle(.secondary)
-        Text("Every Issue in the sprint, not only yours. No forecast is computed over team scope.")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        pointsRow("Baseline Points", instrument.baselinePoints)
-        // Which moment that figure belongs to (#14 AC 6). The sentence is the model's, for the same
-        // reason the age line is: it is panel wording worth having under test, and a view function
-        // would not be. Without it a `0` Delta reads as "this sprint has never grown" when all the
-        // app knows is that it has not grown *since the day it arrived*.
-        if let caption = panel.baselineCaption {
-            Text(caption)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        HStack {
-            Text("Scope Delta")
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(scopeDelta(instrument.scopeDelta))
-                .font(.callout.monospacedDigit())
-        }
-        .font(.callout)
-        .accessibilityElement(children: .combine)
+        // Which moment that figure belongs to (#14 AC 6), as a suffix on the row itself (#18):
+        // Points and capture day stated together — `26 · 8 Sep 2026` — worded by the model, for
+        // the reason the source line is: panel wording worth having under test.
+        row("Baseline Points", panel.baselineRowValue(for: instrument))
+        row("Scope Delta", scopeDelta(instrument.scopeDelta))
     }
 
     /// One Flow-State group — its subtotal and a row per state. The subtotal is the sum of the
@@ -382,25 +345,28 @@ struct PanelView: View {
         }
     }
 
-    /// A count of Working Days, labelled. Plain integer: the day is the unit the rates divide by,
-    /// so it is shown unreduced rather than as a fraction of the sprint.
+    /// A count of Working Days, labelled: the plain integer is the unit the rates divide by,
+    /// shown unreduced rather than as a fraction of the sprint.
     @ViewBuilder
     private func daysRow(_ label: String, _ days: Int) -> some View {
-        HStack {
-            Text(label).foregroundStyle(.secondary)
-            Spacer()
-            Text("\(days)").font(.callout.monospacedDigit())
-        }
-        .font(.callout)
-        .accessibilityElement(children: .combine)
+        row(label, "\(days)")
     }
 
     @ViewBuilder
     private func pointsRow(_ label: String, _ points: Double, indented: Bool = false) -> some View {
+        row(label, PanelModel.formatted(points), indented: indented)
+    }
+
+    /// The Panel's one row shape: a secondary label, a Spacer, and the figure right-aligned in
+    /// monospaced digits — where the figure is words rather than a number, the model has already
+    /// worded it (`baselineRowValue`), because panel wording belongs under test. Combined for
+    /// VoiceOver like every other row, so the value travels in the row's spoken form (#9).
+    @ViewBuilder
+    private func row(_ label: String, _ value: String, indented: Bool = false) -> some View {
         HStack {
             Text(label).foregroundStyle(.secondary)
             Spacer()
-            Text(PanelModel.formatted(points)).font(.callout.monospacedDigit())
+            Text(value).font(.callout.monospacedDigit())
         }
         .font(.callout)
         .padding(.leading, indented ? 12 : 0)
