@@ -106,14 +106,16 @@ _Avoid_: action, transition (when referring to the button)
 ### Surfaces
 
 **Glance**:
-The collapsed surface Sprint Pulse keeps on screen beside the notch — or top-centre of a screen
-without one. It shows Points remaining and nothing that can go stale or be demoted: no Confidence
-State, no rate. Opening it is a click, never a hover.
+The collapsed surface Sprint Pulse keeps on screen wrapping the notch — read as part of the
+hardware, with its one figure in the right wing — or top-centre of a screen without one. It shows Points remaining and nothing that can go stale or be demoted: no
+Confidence State, no rate. Opening it is a click, never a hover; a hover may at most say it can be
+clicked, and never reads or opens anything.
 _Avoid_: pill, island, notch view, HUD, menu bar item
 
 **Panel**:
 The expanded surface a click on the Glance opens: the reading and every figure it was computed
-from. Configuration is not on it — the one exception is choosing a Flow State for an Unmapped
+from. It grows out of the Glance as one shape, and while it is open the Glance states no figure of
+its own — Points remaining is stated once, on the Panel. Configuration is not on it — the one exception is choosing a Flow State for an Unmapped
 Status, which is resolved where it is seen.
 _Avoid_: popover, window, dashboard
 

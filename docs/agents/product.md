@@ -166,14 +166,18 @@ present, `Hands Off`, a large Scope Delta, a mid-sprint cold start, and a sprint
 ## Surfaces
 
 Sprint Pulse lives at the notch, not in the menu bar (M1.5,
-[ADR-0006](../adr/0006-notch-glance-opened-by-click.md)). Two surfaces, one window of its own:
+[ADR-0006](../adr/0006-notch-glance-opened-by-click.md)), and reads as part of it: one black shape,
+whatever the system appearance ([ADR-0007](../adr/0007-the-glance-reads-as-hardware.md)). Two
+surfaces, one window of its own:
 
-- The **Glance** sits beside the notch — top-centre on a screen without one — and shows
-  `▲` Points remaining. Nothing else: no Confidence State, no rate, nothing that can go stale or be
+- The **Glance** wraps the notch, flush with the top edge, and shows `▲` Points remaining in its
+  right wing — on a screen without a notch, the same shape where a notch would be. It is hidden in
+  fullscreen. Nothing else: no Confidence State, no rate, nothing that can go stale or be
   demoted. Where there is no reading or No Work Assigned, it shows no number. Right-click offers
   Settings… and Quit.
-- A **click** on the Glance opens the **Panel**; a hover does nothing, because opening the Panel is
-  a live read (invariant 14). Esc or a click outside closes it. It opens instantly.
+- A **click** on the Glance opens the **Panel**; a hover can at most say the Glance is clickable,
+  because opening the Panel is a live read (invariant 14). The Panel grows out of the Glance as one
+  silhouette, and the Glance's figure withdraws while it is open. Esc or a click outside closes it.
 - The Panel holds the reading and every figure it was computed from, one compressed source line
   (`Live · 4m`, `Cached · 3h`, `Fixture · cap-both`), Refresh, and nothing else — except the
   Unmapped Status warning's Flow State menu, resolved where it is seen.
@@ -192,24 +196,31 @@ require — the Explanation, the source and age, the Baseline's capture moment �
 
 ## Presentation, motion, and accessibility
 
-The mascot depicts **terrain and weather, never judgement**. `Tight` is steep ground and
-gathering cloud; `Off Track` is a long climb in bad light. Never a disappointed face, never a
-slumped posture. An expedition has hard days without the climber having failed; a sad mascot
-would make the instrument an authority figure and productivity performative.
+The mascot is **ornament, invariant to every reading**. It looks the same whatever the sprint
+says: no mood, no weather, no reaction to Points moving, to a Cap firing, or to `Finished`. Anything
+that varied with the reading would be a signal, and a signal is either a Confidence State without
+its Explanation (invariant 12) or, on the Glance, a claim the Glance may not make (invariant 10).
+It never exhorts, nudges, or congratulates, because it never knows anything to do so about. It
+lives on the Panel only — the Glance stays one figure read from the corner of the eye. This
+replaces an earlier plan for a mascot depicting terrain and weather per Confidence State, and with
+it the motion that plan reserved for Confidence State changes: no motion in Sprint Pulse depends on
+the reading.
 
-- **The app ships with no motion at all** (#9, and #19 kept it that way): the Panel is static text,
-  and it opens without animating — `animationBehavior = .none` on a window that is placed rather
-  than transitioned. The loading state is a
-  plain line, not a spinner; the Status Map opens on click without animating — including as the
-  editor it became in #13, whose rows are menus rather than a disclosure group; the scenario picker
-  is a menu. Every bullet below describes the mascot's M3 future, not the panel as it ships.
-- Animation fires **only on a change of Confidence State**. Nothing idle-loops — a looping
-  animation in peripheral vision is a permanent low-grade demand for attention.
-- Under `accessibilityDisplayShouldReduceMotion`, transitions become cross-fades.
-- An **independent** "no animation" preference exists, because "I find it distracting" is a
+- **Two kinds of motion, neither of which depends on the reading.** *Structural*: the Glance
+  growing into the Panel and back (ADR-0007) — identical every time, carrying no information.
+  *Idle*: the mascot's, on the Panel only (M3).
+- **Nothing idle-loops on the Glance** — a looping animation in peripheral vision is a permanent
+  low-grade demand for attention. The Panel is exempt for the mascot alone, because the Panel is
+  open only while the Operator is looking at it.
+- Nothing else moves (#9, #19): the Panel's content is static text, the loading state is a plain
+  line, not a spinner; the Status Map opens on click without animating — including as the editor it
+  became in #13, whose rows are menus rather than a disclosure group; the scenario picker is a menu.
+- Under `accessibilityDisplayShouldReduceMotion`, structural motion is instant and the mascot is
+  still.
+- An **independent** "no animation" preference does the same, because "I find it distracting" is a
   different reason from an accessibility need and should not require changing a system setting.
-- The mascot is decorative and `accessibilityHidden`. It never carries information absent from
-  the text, and every Confidence State is a readable string.
+- The mascot is decorative and `accessibilityHidden`. It never carries information, and every
+  Confidence State is a readable string.
 
 ## Notifications
 
@@ -231,14 +242,14 @@ full sprint.
 | **M1** — live reads | Keychain PAT, base URL and board config, `/myself` identity, live sprint and issue fetch, cache with age stamp, `Unknown` on stale, Status Map editor, Baseline persisted per sprint, fixture/live mode switch. | ✅ |
 | **M1.5** — the notch | The Glance and Panel in Sprint Pulse's own notch window, replacing `MenuBarExtra`; configuration moved to a Settings window; explanatory prose removed and status text compressed; VoiceOver reachability of the Glance. No change to `SprintPulseCore`. | ❌ |
 | **M2** — writes | Per-issue legal transitions, the three Intents, reversibility-derived confirmation, undo. | ❌ |
-| **M3** — the mascot | Terrain and weather states, change-only animation, reduced-motion handling. | ❌ |
+| **M3** — the mascot | An ornamental character, invariant to every reading. | ❌ |
 
 The sequencing is deliberate. The project's risk is concentrated in M0: the forecast either says
 something true about a sprint or it does not, and that is answerable with fixtures alone, before
 a line of networking code. M2 is the only part that can damage anything — writes against a
 workflow the Operator does not control belong on top of an integration already trusted, not
-built beside it. M3 is last because a mascot rendering an unvalidated forecast is decoration on
-a possibly-wrong number. M1.5 comes before M2 so the Intent buttons are designed into the Panel's
+built beside it. M3 has no place in the order: an ornament invariant to the reading cannot be
+wrong about it, so it ships whenever it is ready. M1.5 comes before M2 so the Intent buttons are designed into the Panel's
 final shape rather than moved into it.
 
 **The cheapest possible gut-check** is M0 alone, pointed at fixtures hand-transcribed from a real

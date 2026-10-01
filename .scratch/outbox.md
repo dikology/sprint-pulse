@@ -162,3 +162,15 @@ the AppKit layer is left with nothing but translation. The cross-repo claim: an 
 a UI host should first ask which guarantees lived in the host itself, then write the guard that keeps
 them once it is gone.
 Refs: #19; `Sources/SprintPulse/NotchGeometry.swift`; `Tests/SprintPulseAppTests/NotchHostTests.swift`
+
+### 2026-10-01 — The notch surface turns hardware-styled, and M3 stops depicting the forecast
+A grilling session steered the notch design towards Taby-style notch apps (ADR-0007): the Glance
+wraps the notch as one always-black shape with its figure in the right wing, and the Panel grows out
+of it as one silhouette — structural motion only, click never hover (ADR-0006 stands). The milestone
+shift: M3's mascot is no longer terrain-and-weather per Confidence State but ornament invariant to
+every reading, Panel-only, allowed to idle there. M3 therefore drops out of the risk-ordered sequence
+("a mascot on an unvalidated forecast") and no motion anywhere depends on the reading. The
+cross-repo claim: a mascot borrowed from a reference design was tested against the product's
+existing honesty invariants first; the one property that kept it — invariance to every reading — was
+cheaper to adopt than the state-depicting plan it replaced.
+Refs: `docs/adr/0007-the-glance-reads-as-hardware.md`; `docs/agents/product.md` (Surfaces; Presentation, motion, and accessibility; Delivery)

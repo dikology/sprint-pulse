@@ -32,3 +32,7 @@ without a special case.
   changes in M3.
 - A borderless window is not reachable the way a menu-bar item is, so the Glance must be a single
   accessibility element with a press action, verified with VoiceOver navigation.
+
+> **Amended by [ADR-0007](./0007-the-glance-reads-as-hardware.md):** the Glance wraps the notch
+> rather than sitting beside it, and the Panel grows out of it with structural motion. Click, never
+> hover, stands.
