@@ -15,8 +15,8 @@ let package = Package(
             name: "SprintPulseCore",
             resources: [.copy("Fixtures")]
         ),
-        // The macOS menu-bar app. A thin view layer; it holds all platform concerns and no
-        // forecast logic.
+        // The macOS notch app: the Glance, the Panel it opens, and the Settings window. A thin
+        // view layer; it holds all platform concerns and no forecast logic.
         .executableTarget(
             name: "SprintPulse",
             dependencies: ["SprintPulseCore"]

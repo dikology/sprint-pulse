@@ -13,7 +13,7 @@ for what it is and why, and [`docs/adr/`](./docs/adr/) for the decisions.
 | --- | --- |
 | `Sources/SprintPulseCore/` | The domain model, the forecast, and the Jira gateway. Builds without SwiftUI ([ADR-0005](./docs/adr/0005-standalone-app-not-a-boring-notch-fork.md)). |
 | `Sources/SprintPulseCore/Fixtures/` | The fixture corpus: JSON in the exact shape of Jira Data Center responses, one directory per sprint scenario. |
-| `Sources/SprintPulse/` | The macOS menu-bar app. A thin view layer holding platform and persistence concerns. |
+| `Sources/SprintPulse/` | The macOS notch app: the Glance beside the notch, the Panel a click opens, and the Settings window. A thin view layer holding platform and persistence concerns. |
 | `fixtures/` | Captured from a live instance and anonymised, but deliberately *not* corpus scenarios: nothing in M0 or M1 reads it, and it is not a state to click. The raw form lives in `captures/`, which is gitignored. |
 | `scripts/` | The one command that cannot be a test — re-capturing the live transition graph behind `fixtures/`. |
 | `Tests/SprintPulseCoreTests/` | Domain tests, run against fixtures with a pinned date. |
@@ -23,12 +23,12 @@ for what it is and why, and [`docs/adr/`](./docs/adr/) for the decisions.
 
 ```sh
 swift test          # the domain, the gateway, and the app's seams — no network, no Jira
-swift run SprintPulse   # the menu-bar app
+swift run SprintPulse   # the notch app — a Glance beside the notch, a Panel on click
 ```
 
-With no credential, or a credential with no Board yet, the panel reads the fixture corpus:
-a scenario picker at the top lists every state the instrument can reach, each read at the moment
-that scenario pins for itself, so everything below is explorable by clicking before anything is
+With no credential, or a credential with no Board yet, the app reads the fixture corpus:
+a scenario picker in Settings lists every state the instrument can reach, each read at the moment
+that scenario pins for itself, so everything is explorable by clicking before anything is
 authenticated. Configure a base URL, a Personal Access Token, and one Board and the panel reads
 that Board's live sprint instead — the same gateway protocol, the same forecast. When the Board
 cannot be reached the panel keeps showing the last read that got through, labelled as cached and
@@ -102,8 +102,8 @@ the fixtures already satisfy. The forecast did not change by a line. The bound h
 read operations in total, direct HTTP with no subprocess, and the recorded-request tests fail on
 a fourth; listings are paged to their own `total`, because a slice of a sprint is not a smaller
 truth. A Board with two active sprints asks the Operator which one is tracked and remembers the
-answer for the life of that sprint; the app never guesses. A read happens on window open, on
-Refresh, and when the Operator names the Board to read — there is no timer anywhere in the app,
+answer for the life of that sprint; the app never guesses. A read happens when the Operator opens the
+Panel, on Refresh, and when they name the Board to read — there is no timer anywhere in the app,
 and no request at launch. A failed fetch leaves the last reading standing and says which condition
 it met, and a resolved identity that matches no Issue at all is shown as **No Work Assigned**
 rather than as `Finished`. Two more things are configured once and remembered: the Board, typed

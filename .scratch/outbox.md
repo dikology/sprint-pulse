@@ -148,3 +148,17 @@ refuses. The cross-repo claim: when an agent relocates UI across surfaces, every
 enforced by "the control wasn't there" becomes view-dependent after the move, and the check that
 catches it is a pass over *where triggers can now fire*, not a diff of what renders where.
 Refs: #17; `Sources/SprintPulse/PanelModel.swift`; `Sources/SprintPulse/SprintPulseApp.swift`; `Tests/SprintPulseAppTests/SettingsWindowTests.swift`
+
+### 2026-10-01 — An invariant kept by an *absence* gets pinned by scanning the sources for it
+M1.5 landed: #19 replaced the menu-bar host with Sprint Pulse's own notch windows, so the app now
+carries no scene for its two surfaces. Two claims survived that as tests rather than as review
+comment. (1) #17's lesson generalised: an invariant held because "the control wasn't there" is
+guarded by scanning `Sources/` for the API that would break it — no cursor-tracking call anywhere is
+what makes "hovering issues no read" a checked fact, and the same scan pins `MenuBarExtra`'s removal
+and the absence of any notification API. (2) Where a decision must be testable but the only honest
+evidence is a live window server, model the *inputs* as data: notch geometry is arithmetic over a
+`ScreenSurface` value, so "the lid closed and only an external display is left" is a test case and
+the AppKit layer is left with nothing but translation. The cross-repo claim: an agent asked to remove
+a UI host should first ask which guarantees lived in the host itself, then write the guard that keeps
+them once it is gone.
+Refs: #19; `Sources/SprintPulse/NotchGeometry.swift`; `Tests/SprintPulseAppTests/NotchHostTests.swift`

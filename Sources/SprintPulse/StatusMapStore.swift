@@ -2,7 +2,7 @@ import Foundation
 import SprintPulseCore
 
 /// Persists the Operator's Status Map across launches (#13), so mapping an `Unmapped Status` fixes
-/// the forecast for good rather than until the next window open.
+/// the forecast for good rather than until the next Panel open.
 ///
 /// The map is the Operator's own translation, and this is the only place it is stored: `Forecast`
 /// keeps taking it as a value and core stays free of I/O (#2's boundary, the same one the Baseline

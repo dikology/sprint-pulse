@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 import SprintPulseCore
 
-/// The panel behind the menu-bar item. It renders the fields of an `Instrument` and holds no
-/// forecast logic of its own. Every number shown is reproducible by hand from the others on
-/// screen (CONTEXT invariant 10): the per-Flow-State rows sum to the Actionable and Waiting
-/// totals.
+/// The Panel: the expanded surface a click on the Glance opens, directly below the notch (#19). It
+/// renders the fields of an `Instrument` and holds no forecast logic of its own. Every number shown
+/// is reproducible by hand from the others on screen (CONTEXT invariant 10): the per-Flow-State rows
+/// sum to the Actionable and Waiting totals.
 ///
 /// Two properties of the whole panel are load-bearing (#9): it ships with no motion — no spinner,
 /// no animating disclosure, nothing that loops and demands peripheral attention — and nothing
@@ -20,10 +20,16 @@ import SprintPulseCore
 /// #17 took the configuration out: the connection, the Board and Estimate fields, the Status Map
 /// editor, and the scenario picker are the Settings window's now. #18 took the prose out — no
 /// caption annotates a figure, and the states the invariants require keep their wording only where
-/// the wording *is* the state (`docs/agents/product.md`, Surfaces). What stays is the reading,
-/// Refresh, the one exception — the `Unmapped Status` warning's Flow State menu, resolved where it
-/// is met (#13's exception, the same `StatusMappingMenu` the Settings editor carries) — and the
-/// two ways out of a still-`MenuBarExtra` app until the notch host gives them a new home.
+/// the wording *is* the state (`docs/agents/product.md`, Surfaces). #19 took the last two things
+/// that were not the reading: Settings… and Quit, which the Glance's right-click carries now, and
+/// the `onAppear` that used to read the Board when the window appeared — with the menu-bar host
+/// gone, the window stands open between openings, so appear-with-a-read became either a missed read
+/// or a second one for a single click. Opening the Panel is the read now, and `NotchHost` owns that
+/// gesture.
+///
+/// What stays is the reading, Refresh, and the one exception — the `Unmapped Status` warning's Flow
+/// State menu, resolved where it is met (#13's exception, the same `StatusMappingMenu` the Settings
+/// editor carries).
 struct PanelView: View {
     @ObservedObject var panel: PanelModel
 
@@ -36,26 +42,15 @@ struct PanelView: View {
             if let readProblem = panel.readProblem {
                 problemLine(readProblem)
             }
-
-            Divider()
-
-            settingsButton
-
-            Button("Quit Sprint Pulse") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q")
         }
         .padding(12)
         .frame(width: 280)
-        // The window opening is one of the moments a live read happens (#11); the other is the
-        // Refresh button. Nothing here polls, and while the panel is reading the corpus this
-        // asks for nothing — a fixture is a file, not a request. The wiring that turns an act on
-        // the connection into a read belongs to the composition root now: those acts live in the
-        // Settings window with #17, and the Panel is no longer where they can first be made.
-        .onAppear {
-            Task { await panel.windowDidAppear() }
-        }
+        // The window this is drawn in is borderless and transparent, so the card is the view's own:
+        // a standard window background with an edge, so the Panel reads as one surface rather than
+        // as loose text over whatever is behind it. The corner radius is what the window's shadow
+        // follows.
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.windowBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(NSColor.separatorColor)))
     }
 
     /// What the panel is reading and how old its data is — one line (#18) — and the one control
@@ -77,18 +72,6 @@ struct PanelView: View {
                     Task { await panel.refresh() }
                 }
             }
-        }
-    }
-
-    /// The way into the Settings window while the app is still a `MenuBarExtra`: an accessory app
-    /// has no menu, so ⌘, cannot be relied on and the Panel has no focus to hold it — which is
-    /// why #17's move had to leave a door on the Panel itself.
-    @ViewBuilder
-    private var settingsButton: some View {
-        if #available(macOS 14.0, *) {
-            OpenSettingsButton()
-        } else {
-            LegacySettingsButton()
         }
     }
 
@@ -176,7 +159,7 @@ struct PanelView: View {
 
     /// The prompt #11 exists for: several active sprints, and the app will not pick one. The
     /// answer is the Operator's and is remembered for the life of the sprint they name, so the
-    /// question is asked once per sprint rather than every time the window opens.
+    /// question is asked once per sprint rather than every time the Panel opens.
     @ViewBuilder
     private func activeSprintPrompt(_ candidates: [JiraSprint]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -492,30 +475,5 @@ struct PanelView: View {
     /// figure (invariant 10).
     private func rateText(_ rate: Double) -> String {
         String(format: "%.2f", rate)
-    }
-}
-
-/// Opens the `Settings` scene (#17). The app is an accessory with no menu, so it activates
-/// itself first — a Settings window behind the Panel is a Settings window nobody opened.
-@available(macOS 14.0, *)
-private struct OpenSettingsButton: View {
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some View {
-        Button("Settings…") {
-            NSApp.activate(ignoringOtherApps: true)
-            openSettings()
-        }
-    }
-}
-
-/// The macOS 13 way: the responder-chain action the `Settings` scene installs, and from macOS 14
-/// a selector that stopped reaching it — hence the split at the call site.
-private struct LegacySettingsButton: View {
-    var body: some View {
-        Button("Settings…") {
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
     }
 }

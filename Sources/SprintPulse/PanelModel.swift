@@ -24,7 +24,7 @@ struct JiraLiveConfiguration: Equatable, Sendable {
 /// it explicitly theirs: the panel can be put back on the corpus while a credential stands and
 /// taken off it again, and neither act reaches the domain or the credential at all.
 ///
-/// When a read happens (#11): a live fetch runs when the panel window opens, when the Operator
+/// When a read happens (#11, #19): a live fetch runs when the Operator opens the Panel, when they
 /// presses Refresh, and when they change the connection they want read — a Board remembered, a
 /// credential resolved or revoked, or the panel switched back from the corpus to their Board
 /// (#15). There is no timer and no polling anywhere in the app, and no live read at launch. A
@@ -235,11 +235,11 @@ final class PanelModel: ObservableObject {
         self.liveGateway = liveGateway
 
         if let configuration = liveRead {
-            // A live Board is not read at launch: the first fetch waits for the window to open
-            // (#11). Nothing is read from the cache at launch either — the cache is what the panel
-            // shows *when* the window opens, before the fetch has had a chance to fail (#12).
-            // Fixtures are read at launch so the menu-bar item carries the number without
-            // a click — a bundled file is not a request.
+            // A live Board is not read at launch: the first fetch waits for the Operator to open
+            // the Panel (#11). Nothing is read from the cache at launch either — the cache is what
+            // the panel shows *when* the Panel opens, before the fetch has had a chance to fail
+            // (#12). Fixtures are read at launch so the Glance carries the number without a click
+            // — a bundled file is not a request.
             source = .live(boardID: configuration.boardID)
         } else {
             Task { await load() }
@@ -247,29 +247,40 @@ final class PanelModel: ObservableObject {
     }
 
     /// The reading to put a number on, when the state on screen is one. Derived from `content` so
-    /// the menu-bar item and the panel cannot disagree about what was read — and so No Work
-    /// Assigned, which is not a reading, contributes no zero to the menu bar (#11).
+    /// the Glance and the Panel cannot disagree about what was read — and so No Work Assigned,
+    /// which is not a reading, contributes no zero to the notch (#11, invariant 13).
     var instrument: Instrument? {
         if case .forecast(let instrument) = content { return instrument }
         return nil
     }
 
-    var menuBarLabel: String {
-        guard let instrument else { return "Sprint Pulse" }
-        // A neutral marker until the mascot (M3); the number is the instrument.
+    /// What the Glance shows: the marker and Points remaining, or the marker alone.
+    ///
+    /// The marker is the Glance's own — it stays so the surface is the same shape and the same click
+    /// target whether or not there is a reading, and it is what VoiceOver is not asked to read
+    /// (`glanceAccessibilityLabel` says the figure in words instead). Where there is no reading, or
+    /// the Operator has No Work Assigned, no number appears: an empty My Work is never rendered as
+    /// a confident zero, and the Glance is not the surface that gets to make an exception to that
+    /// (CONTEXT invariant 13).
+    ///
+    /// Nothing else ever goes here — no Confidence State, no rate (invariant 10's second half,
+    /// ADR-0006's Consequence). The Glance claims nothing that can go stale or be demoted, which is
+    /// why #12's withdrawal and #13's caps bind the Panel and leave this figure alone.
+    var glanceLabel: String {
+        guard let instrument else { return "▲" }
         return "▲ \(Self.formatted(instrument.pointsRemaining))"
     }
 
-    /// The menu-bar item's spoken form: the marker is decorative and a bare number is not a
-    /// sentence, so VoiceOver is given the figure in words — the instrument's entry point
-    /// must be as legible as its panel (#9).
+    /// The Glance's spoken form: the marker is decorative and a bare number is not a sentence, so
+    /// VoiceOver is given the figure in words — the instrument's entry point must be as legible as
+    /// its Panel (#9), and since #19 it is also its only one.
     ///
     /// Neither form carries the age (#12), and that is a decision rather than an omission: what the
-    /// bar shows is Points remaining, which is exactly the figure #12 keeps on screen when data
+    /// Glance shows is Points remaining, which is exactly the figure #12 keeps on screen when data
     /// goes stale because it stays true of the sprint whenever it was counted. The thing that
-    /// withdraws is Confidence, which the bar never claimed. Where a reading came from and when it
-    /// was taken are the panel's to say, and the panel is one click away by design.
-    var menuBarAccessibilityLabel: String {
+    /// withdraws is Confidence, which the Glance never claimed. Where a reading came from and when
+    /// it was taken are the Panel's to say, and the Panel is one click away by design.
+    var glanceAccessibilityLabel: String {
         guard let instrument else { return "Sprint Pulse" }
         return "Sprint Pulse, \(Self.formatted(instrument.pointsRemaining)) Points remaining"
     }
@@ -332,7 +343,7 @@ final class PanelModel: ObservableObject {
     }
 
     /// The mode word with the age of the data behind it when there is one. A Board that has
-    /// answered nothing yet — the window opened, nothing was cached, the request is still in
+    /// answered nothing yet — the Panel opened, nothing was cached, the request is still in
     /// flight — says only `Live`: there is no instant on screen yet to be old against.
     private func modeWithAge(_ mode: String) -> String {
         guard let readAt = dataReadAt else { return mode }
@@ -406,9 +417,11 @@ final class PanelModel: ObservableObject {
         ((try? credentials.countStoredItems()) ?? 0) > 0
     }
 
-    /// The panel window appeared: the first of the moments a live read happens (#11). A fixture
-    /// panel is not re-read for it — the reading is already on screen and no request is waiting,
-    /// and since #15 that includes a Board the Operator has deliberately walked away from.
+    /// The Operator opened the Panel: the first of the moments a live read happens (#11, #19).
+    /// Since #19 the cause is a click on the Glance, decided in `NotchHost`; the name is the ticket's
+    /// own and the seam every read test in this repo stands on. A fixture panel is not re-read for it
+    /// — the reading is already on screen and no request is waiting, and since #15 that includes a
+    /// Board the Operator has deliberately walked away from.
     func windowDidAppear() async {
         guard liveRead != nil else { return }
         await load()
@@ -769,7 +782,7 @@ final class PanelModel: ObservableObject {
     /// scenario's own (#9) and re-sampling it would walk Working Days past the sprint the scenario
     /// describes; for a live or cached read the verdict on the data's age was taken when the window
     /// opened, and nothing here re-times a sentence that has been printed. So an edit made shortly
-    /// after midnight re-judges yesterday's numbers as yesterday's reading, and the next window open
+    /// after midnight re-judges yesterday's numbers as yesterday's reading, and the next Panel open
     /// withdraws it the way it withdraws everything else that aged — which is the same behaviour a
     /// reading that is never edited has.
     private func rejudgeCurrentRead() {

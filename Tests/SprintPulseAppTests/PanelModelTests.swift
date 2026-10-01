@@ -169,7 +169,7 @@ final class PanelModelTests: XCTestCase {
     /// The state #11 exists for: the identity resolved, the Board answered, and nothing in the
     /// sprint belongs to that person. The forecast's own answer over an empty set is `Finished`,
     /// which would be a confident zero about a sprint that is full; the panel replaces the
-    /// reading instead, and the menu bar declines to render a number for it.
+    /// reading instead, and the Glance shows no number for it (CONTEXT invariant 13).
     func test_liveRead_matchingNoIssues_isItsOwnState_notAConfidentZero() async throws {
         try configureLive()
         let model = makeModel(reading: .json(sprints: oneSprint, issues: noneOfMine), into: Reads())
@@ -182,7 +182,14 @@ final class PanelModelTests: XCTestCase {
             "the empty subject, named, with the sprint's own Points beside it"
         )
         XCTAssertNil(model.instrument, "no reading, so nothing to put a number on")
-        XCTAssertEqual(model.menuBarLabel, "Sprint Pulse", "and no zero in the menu bar either")
+        XCTAssertEqual(
+            model.glanceLabel, "▲",
+            "the Glance keeps its marker and shows no number — no zero up there either"
+        )
+        XCTAssertEqual(
+            model.glanceAccessibilityLabel, "Sprint Pulse",
+            "and it says no zero out loud either"
+        )
         XCTAssertNil(model.readProblem, "this is a state, not a failure")
     }
 
@@ -490,7 +497,7 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(instrument.droppedPoints, 0)
         XCTAssertEqual(instrument.liveSprintPoints, 26)
         XCTAssertEqual(instrument.scopeDelta, 0, "still on screen, still the sprint's own shape")
-        XCTAssertEqual(offline.menuBarLabel, "▲ 5", "and the menu bar keeps the number it can still stand behind")
+        XCTAssertEqual(offline.glanceLabel, "▲ 5", "and the Glance keeps the number it can still stand behind")
         XCTAssertNotNil(offline.readProblem)
     }
 
@@ -1037,19 +1044,19 @@ final class PanelModelTests: XCTestCase {
         XCTAssertEqual(cache.load(), fetched, "the drawer holds the read that got through, not the map edit beside it")
     }
 
-    /// An edit reaches the menu bar too, from the same re-judgement: the number the Operator glances
+    /// An edit reaches the Glance too, from the same re-judgement: the number the Operator glances
     /// at is the one the map produced, not the one from before they fixed the map.
-    func test_anEditToTheMap_movesTheMenuBarNumber_withoutARequest() async throws {
+    func test_anEditToTheMap_movesTheGlanceNumber_withoutARequest() async throws {
         let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
         model.scenario = .severalAssignees
         await waitUntil { model.instrument != nil }
-        XCTAssertEqual(model.menuBarLabel, "▲ 5", "3 In Progress + 2 Open")
+        XCTAssertEqual(model.glanceLabel, "▲ 5", "3 In Progress + 2 Open")
 
-        // A status the Operator reads as finished work: the remaining total is the figure the bar
-        // carries, so the edit has to move it or the bar is showing a superseded reading.
+        // A status the Operator reads as finished work: the remaining total is the figure the
+        // Glance carries, so the edit has to move it or the Glance is showing a superseded reading.
         model.setMapping(jiraStatus: "In Progress", to: .done)
 
-        XCTAssertEqual(model.menuBarLabel, "▲ 2", "the 3 Points stopped being remaining")
+        XCTAssertEqual(model.glanceLabel, "▲ 2", "the 3 Points stopped being remaining")
         XCTAssertEqual(try XCTUnwrap(model.instrument).completedPoints, 15)
     }
 
@@ -1380,7 +1387,7 @@ final class PanelModelTests: XCTestCase {
 
         XCTAssertEqual(pinned.instrument, plainReading, "one entry point, one reading")
         XCTAssertEqual(pinned.readingIdentity, unpinned.readingIdentity)
-        XCTAssertEqual(pinned.menuBarLabel, unpinned.menuBarLabel)
+        XCTAssertEqual(pinned.glanceLabel, unpinned.glanceLabel)
         XCTAssertNil(pinned.boardID, "and the reading carries no Board's caption")
         XCTAssertEqual(reads.count, 0, "nor any part of it cost a request")
     }
@@ -1404,6 +1411,42 @@ final class PanelModelTests: XCTestCase {
 
         XCTAssertNil(model.readProblem, "the corpus answers, and the Board's bad news retires with it")
         XCTAssertTrue(model.hasStoredCredential, "and none of this touched the credential")
+    }
+
+    // MARK: - The Glance's one figure (#19)
+
+    /// AC 3, over the whole corpus rather than one reading: everything the Glance may carry is a
+    /// marker and Points remaining, so it claims nothing that can go stale and nothing that can be
+    /// demoted (ADR-0006's Consequence, CONTEXT invariant 10's second half). Every scenario is
+    /// loaded, because a state the corpus holds and the Glance renders differently is exactly the
+    /// one that would ship wrong: `Hands Off` and a rate would both fit beside the marker, and only
+    /// corpus says when each would have been shown.
+    func test_theGlanceCarriesOnlyPointsRemaining_whateverTheCorpusSays() async throws {
+        for scenario in FixtureScenario.allCases {
+            let model = makeModel(reading: .json(sprints: oneSprint, issues: myWork), into: Reads())
+            model.scenario = scenario
+            await waitUntil { model.source == .fixture(scenario) && model.content != .nothing }
+
+            guard let instrument = model.instrument else {
+                // A state that is not a reading — No Work Assigned, the sprint prompt — gives the
+                // Glance no number to show (invariant 13).
+                XCTAssertEqual(
+                    model.glanceLabel, "▲",
+                    "\(scenario.rawValue) is not a reading, so the Glance shows no number"
+                )
+                continue
+            }
+
+            let points = PanelModel.formatted(instrument.pointsRemaining)
+            XCTAssertEqual(
+                model.glanceLabel, "▲ \(points)",
+                "\(scenario.rawValue): the marker and the figure, and nothing else"
+            )
+            XCTAssertEqual(
+                model.glanceAccessibilityLabel, "Sprint Pulse, \(points) Points remaining",
+                "\(scenario.rawValue): the same figure as a sentence, no Confidence State in it"
+            )
+        }
     }
 
     // MARK: - Helpers

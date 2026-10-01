@@ -15,8 +15,8 @@ import Foundation
 /// active sprints on one Board, and one sprint's Issues (#11). The last two read *listings*, so
 /// they repeat their own request until it closes — more requests, never a second kind of request.
 /// `LiveJiraGateway` is the only caller of the sprint reads, and the panel is the only caller of
-/// the gateway: a fetch happens on window open and on explicit refresh, and no timer anywhere in
-/// the app reaches this file.
+/// the gateway: a fetch happens when the Operator opens the Panel and on explicit refresh, and no
+/// timer anywhere in the app reaches this file.
 public struct JiraHTTPClient: Sendable {
     /// Held to the access level it is used at: nothing outside this type reads the configured
     /// URL back out of the client.

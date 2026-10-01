@@ -179,10 +179,12 @@ Sprint Pulse lives at the notch, not in the menu bar (M1.5,
   Unmapped Status warning's Flow State menu, resolved where it is seen.
 - **Settings** is a standard macOS window: Jira connection, Board, Estimate field, the Status Map
   editor, and Fixture Mode with its scenario picker. Opening it issues no live read; each act on
-  the connection made in it issues exactly one. While the app is still a `MenuBarExtra` — #17
-  lands before the notch host of #19 puts Settings… and Quit on the Glance's right-click — the
-  Panel carries the app's only two ways out, a Settings… button and Quit, because an accessory
-  app with no menu cannot rely on ⌘, while the Panel has no focus.
+  the connection made in it issues exactly one.
+- ⌘, and ⌘Q work while the Panel has focus, and the Glance's right-click carries the same two
+  commands. Neither can be taken for granted in an accessory app: with no menu bar on screen, the
+  key equivalents are answered by the Panel's own window, and the route that actually reaches the
+  `Settings` scene is SwiftUI's `openSettings` environment action — `showSettingsWindow:` reports
+  itself handled and opens nothing (#19).
 
 The Panel carries no explanatory prose. What a figure means is this document's job and
 `CONTEXT.md`'s; the instrument states, it does not annotate itself. Status text the invariants
@@ -195,11 +197,12 @@ gathering cloud; `Off Track` is a long climb in bad light. Never a disappointed 
 slumped posture. An expedition has hard days without the climber having failed; a sad mascot
 would make the instrument an authority figure and productivity performative.
 
-- **M0 ships with no motion at all** (#9): the panel is static text, and M1.5's Panel opens
-  without animating. The loading state is a
+- **The app ships with no motion at all** (#9, and #19 kept it that way): the Panel is static text,
+  and it opens without animating — `animationBehavior = .none` on a window that is placed rather
+  than transitioned. The loading state is a
   plain line, not a spinner; the Status Map opens on click without animating — including as the
   editor it became in #13, whose rows are menus rather than a disclosure group; the scenario picker
-  is a menu. Every bullet below describes the mascot's M3 future, not the M0 panel.
+  is a menu. Every bullet below describes the mascot's M3 future, not the panel as it ships.
 - Animation fires **only on a change of Confidence State**. Nothing idle-loops — a looping
   animation in peripheral vision is a permanent low-grade demand for attention.
 - Under `accessibilityDisplayShouldReduceMotion`, transitions become cross-fades.
@@ -244,6 +247,6 @@ model is right and M1 is plumbing.
 
 ## Hosting
 
-Sprint Pulse ships as a standalone app — a menu-bar app through M1, a notch app from M1.5 — not a
-Boring Notch fork. Licence: MIT. See
+Sprint Pulse ships as a standalone app — a menu-bar app through M1, its own notch windows since
+M1.5 — not a Boring Notch fork. Licence: MIT. See
 [ADR-0005](../adr/0005-standalone-app-not-a-boring-notch-fork.md).
