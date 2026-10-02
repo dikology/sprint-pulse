@@ -160,8 +160,9 @@ final class NotchHostTests: XCTestCase {
 
     // MARK: - Following the screens (AC 4)
 
-    /// The Glance belongs beside the notch on the screen that has one.
-    func test_theGlanceIsPlacedBesideTheNotch_onANotchedScreen() throws {
+    /// The host publishes the band that wraps the notch, not the surface that used to sit beside it:
+    /// the frames the window layer moves its windows to are the wrapping ones (#25 AC 1).
+    func test_theGlanceWrapsTheNotch_onANotchedScreen() throws {
         let (_, host) = makeHost(into: Reads())
 
         host.screensDidChange(to: [Self.builtIn])
@@ -169,19 +170,18 @@ final class NotchHostTests: XCTestCase {
         let layout = try XCTUnwrap(host.layout)
         XCTAssertTrue(layout.atNotch)
         XCTAssertEqual(
-            layout.glance.minX, 956 + NotchMetrics.notchClearance,
-            "the notch's right edge on this Mac is x 956"
+            layout.glance.minX, 759,
+            "the band starts left of the cutout at x 771 rather than right of it at x 956"
         )
-        XCTAssertEqual(layout.glance.midY, 1_101, "centred on the strip from y 1085 to 1117")
+        XCTAssertEqual(layout.glance.maxY, 1_117, "flush with the top edge of this Mac's display")
     }
 
     /// AC 4, as the Operator meets it: the lid closes, the built-in display goes away with its
     /// notch, and only the external display is left. The Glance follows and takes the top-centre of
-    /// that display — the same rule that puts it there on a Mac that never had a notch.
+    /// that display — the same band, in the place a notch would have been.
     func test_theLidCloses_movingTheGlanceToTheTopCentreOfTheExternalDisplay() throws {
         let external = ScreenSurface(
             frame: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            unobstructedTop: 1_055,
             notch: nil,
             isMain: false
         )
@@ -192,17 +192,13 @@ final class NotchHostTests: XCTestCase {
 
         // The lid closed: one screen left, and it carries the menu bar now.
         host.screensDidChange(to: [
-            ScreenSurface(
-                frame: external.frame,
-                unobstructedTop: external.unobstructedTop,
-                notch: nil,
-                isMain: true
-            ),
+            ScreenSurface(frame: external.frame, notch: nil, isMain: true),
         ])
 
         let layout = try XCTUnwrap(host.layout)
         XCTAssertFalse(layout.atNotch)
         XCTAssertEqual(layout.glance.midX, external.frame.midX, "centred on the only screen left")
+        XCTAssertEqual(layout.glance.maxY, 1_080, "flush with its top edge, not under the menu bar")
         XCTAssertEqual(layout.panel.midX, external.frame.midX)
     }
 
@@ -211,7 +207,6 @@ final class NotchHostTests: XCTestCase {
     func test_anExternalDisplayAttaches_movingTheGlanceOntoTheNotch() throws {
         let external = ScreenSurface(
             frame: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            unobstructedTop: 1_055,
             notch: nil,
             isMain: true
         )
@@ -254,7 +249,6 @@ final class NotchHostTests: XCTestCase {
     /// strip runs from y 1085 to the top of the screen at 1117.
     private static let builtIn = ScreenSurface(
         frame: CGRect(x: 0, y: 0, width: 1_728, height: 1_117),
-        unobstructedTop: 1_084,
         notch: CGRect(x: 771, y: 1_085, width: 185, height: 32),
         isMain: true
     )

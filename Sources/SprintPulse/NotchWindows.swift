@@ -25,7 +25,7 @@ final class NotchWindows: NSObject {
     private let host: NotchHost
 
     private let glanceWindow = GlanceWindow(
-        contentRect: CGRect(origin: .zero, size: NotchMetrics.glanceSize),
+        contentRect: CGRect(origin: .zero, size: NotchMetrics.nominalBandSize),
         styleMask: [.borderless, .nonactivatingPanel],
         backing: .buffered,
         defer: false
@@ -37,7 +37,7 @@ final class NotchWindows: NSObject {
         defer: false
     )
     private let glanceSurface = GlanceSurface(
-        frame: CGRect(origin: .zero, size: NotchMetrics.glanceSize)
+        frame: CGRect(origin: .zero, size: NotchMetrics.nominalBandSize)
     )
     private lazy var panelHosting = NSHostingView(rootView: PanelView(panel: panel))
 
@@ -113,6 +113,9 @@ final class NotchWindows: NSObject {
 
     private func configureGlance() {
         configureCommon(glanceWindow)
+        // The band is hardware flush with the top edge of the screen, and hardware casts no shadow: a
+        // shadow around it is exactly what would read as a window parked on the notch (#25).
+        glanceWindow.hasShadow = false
         glanceWindow.contentView = glanceSurface
         glanceWindow.isExcludedFromWindowsMenu = true
 
@@ -242,7 +245,7 @@ final class NotchWindows: NSObject {
     /// `safeAreaInsets.top` is its depth, and its width is what the screen's width loses to
     /// `auxiliaryTopLeftArea` and `auxiliaryTopRightArea` — the two unobstructed rects either side of
     /// it. On this Mac that measures 185×32. A screen with no obstruction reports a zero inset, and
-    /// `NotchGeometry` puts the Glance at its top-centre instead.
+    /// `NotchGeometry` draws the band at its top-centre instead, where a notch would be.
     ///
     /// `isMain` is asked of the coordinate space rather than of `NSScreen.main`, which reports the
     /// screen with the keyboard focus: the global Cocoa space is defined by the main display's
@@ -255,7 +258,6 @@ final class NotchWindows: NSObject {
             let width = screen.frame.width - left - right
             return ScreenSurface(
                 frame: screen.frame,
-                unobstructedTop: screen.visibleFrame.maxY,
                 notch: depth > 0 && width > 0
                     ? CGRect(
                         x: screen.frame.minX + left,

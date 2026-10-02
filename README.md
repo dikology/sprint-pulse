@@ -13,7 +13,7 @@ for what it is and why, and [`docs/adr/`](./docs/adr/) for the decisions.
 | --- | --- |
 | `Sources/SprintPulseCore/` | The domain model, the forecast, and the Jira gateway. Builds without SwiftUI ([ADR-0005](./docs/adr/0005-standalone-app-not-a-boring-notch-fork.md)). |
 | `Sources/SprintPulseCore/Fixtures/` | The fixture corpus: JSON in the exact shape of Jira Data Center responses, one directory per sprint scenario. |
-| `Sources/SprintPulse/` | The macOS notch app: the Glance beside the notch, the Panel a click opens, and the Settings window. A thin view layer holding platform and persistence concerns. |
+| `Sources/SprintPulse/` | The macOS notch app: the Glance — the black band that wraps the notch — the Panel a click opens, and the Settings window. A thin view layer holding platform and persistence concerns. |
 | `fixtures/` | Captured from a live instance and anonymised, but deliberately *not* corpus scenarios: nothing in M0 or M1 reads it, and it is not a state to click. The raw form lives in `captures/`, which is gitignored. |
 | `scripts/` | The one command that cannot be a test — re-capturing the live transition graph behind `fixtures/`. |
 | `Tests/SprintPulseCoreTests/` | Domain tests, run against fixtures with a pinned date. |
@@ -23,7 +23,7 @@ for what it is and why, and [`docs/adr/`](./docs/adr/) for the decisions.
 
 ```sh
 swift test          # the domain, the gateway, and the app's seams — no network, no Jira
-swift run SprintPulse   # the notch app — a Glance beside the notch, a Panel on click
+swift run SprintPulse   # the notch app — a Glance wrapping the notch, a Panel on click
 ```
 
 With no credential, or a credential with no Board yet, the app reads the fixture corpus:

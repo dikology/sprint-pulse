@@ -1,20 +1,22 @@
 import AppKit
 import SwiftUI
 
-/// The Glance: Sprint Pulse's collapsed surface, drawn beside the notch or at the top-centre of a
-/// screen that has none (#19).
+/// The Glance: Sprint Pulse's collapsed surface, the black band that wraps the notch — or, on a screen
+/// that has none, the same shape at the menu bar's centre where a notch would be (#25).
 ///
 /// It carries one figure and nothing that can go stale or be demoted — Points remaining, worded by
-/// `PanelModel.glanceLabel` so the Glance and the Panel cannot disagree about what was read. The click
-/// that opens the Panel belongs to the window layer (`NotchWindows`), which owns the window this view
-/// is hosted in; what is left here is the thing the Operator looks at, and the accessibility of it.
+/// `PanelModel.glanceLabel` so the Glance and the Panel cannot disagree about what was read. The figure
+/// sits in the band's right wing, clear of the cutout, and the left wing stays empty: the Glance has one
+/// figure to show, and an empty wing says so (`CONTEXT.md`, Glance; ADR-0007). The click that opens the
+/// Panel belongs to the window layer (`NotchWindows`), which owns the window this view is hosted in; what
+/// is left here is the thing the Operator looks at, and the accessibility of it.
 ///
 /// Two properties of #9 still hold and are the reason for this view's shape: nothing loops or
 /// animates, and the figure is a readable string rather than an image or a colour.
 ///
-/// A borderless window is not reachable the way a menu-bar item is (ADR-0006's last Consequence), so
-/// the whole Glance is one accessibility element whose spoken label is the sentence the figure stands
-/// in for and whose press action is the click. That is what AC 6 is verified against.
+/// A borderless window is not reachable the way a menu-bar item is (ADR-0006's last Consequence), so the
+/// whole band is one accessibility element whose spoken label is the sentence the figure stands in for
+/// and whose press action is the click. That is what AC 5 is verified against.
 struct GlanceView: View {
     @ObservedObject var panel: PanelModel
     let host: NotchHost
@@ -28,9 +30,14 @@ struct GlanceView: View {
     var body: some View {
         Text(panel.glanceLabel)
             .font(.callout.bold().monospacedDigit())
-            .foregroundStyle(.white)
-            .frame(width: NotchMetrics.glanceSize.width, height: NotchMetrics.glanceSize.height)
-            .background(Capsule().fill(Color(white: 0.08)))
+            .foregroundStyle(NotchPalette.figure)
+            // The figure sits at the right end of the band's wing, so it never overlaps the cutout.
+            .padding(.trailing, NotchMetrics.bandFigureInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            // The band is hardware: the cutout's black, square against the top edge of the screen and
+            // rounded where it meets the desktop. No system colour is in this surface at all, so the
+            // shape is drawn by the view rather than being a window background with an edge (ADR-0007).
+            .background(NotchShape().fill(NotchPalette.surface))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(panel.glanceAccessibilityLabel)
             .accessibilityAddTraits(.isButton)
