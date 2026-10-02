@@ -67,8 +67,8 @@ final class NotchGeometryTests: XCTestCase {
 
     /// AC 1: the Glance is the notch's own strip widened into a band, flush with the top edge of the
     /// screen, so the cutout disappears into it instead of standing next to a floating shape. The
-    /// figure's wing is on the right and the left wing is the 12pt that makes the cutout vanish —
-    /// the band has one figure to show (`CONTEXT.md`, Glance), so the left wing stays empty.
+    /// figure's wing is the constant and the empty left wing absorbs the rest — the band has one figure
+    /// to show (`CONTEXT.md`, Glance), so the left wing stays empty.
     func test_layout_wrappingANotch_putsTheBandFlushWithTheTopEdge() throws {
         let layout = NotchGeometry.layout(on: Self.builtIn, panelSize: Self.panelSize)
         let notch = try XCTUnwrap(Self.builtIn.notch)
@@ -76,26 +76,37 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertTrue(layout.atNotch, "the band is at the notch, not at the top-centre")
         XCTAssertEqual(layout.glance.maxY, 1_117, "flush with the top edge of the screen")
         XCTAssertEqual(layout.glance.minY, notch.minY, "and down to the notch's own bottom edge")
-        XCTAssertEqual(layout.glance.minX, 759, "12pt of band left of the cutout at x 771")
-        XCTAssertEqual(layout.glance.maxX, 1_038, "…and the figure's wing right of it at x 956")
-        XCTAssertEqual(layout.glance.width, 279, "12 + the notch's 185 + 82 for the widest figure")
+        XCTAssertEqual(layout.glance.maxX, 1_038, "the figure's 82 right of the cutout's edge at x 956")
+        XCTAssertEqual(layout.glance.minX, 758, "…and the empty wing takes the rest: 13pt left of x 771")
+        XCTAssertEqual(layout.glance.width, 280, "the Panel's own column, which is what makes the two one shape")
     }
 
-    /// "Opens directly below the notch": the Panel's top edge is under the notch's bottom edge, and
-    /// it is centred on the notch rather than on the screen — the notch is where the Operator looked
-    /// from.
-    func test_layout_wrappingANotch_hangsThePanelFromTheBandsBottomEdge() {
+    // MARK: - One silhouette: the Panel hangs from the band (#21)
+
+    /// AC 2: the Panel and the band are one continuous shape. Two windows can only read as one if they
+    /// share a column exactly and the Panel's top edge reaches *into* the band, so no hairline of
+    /// desktop can show through at the join. The point of overlap is stated as a number rather than as
+    /// `NotchMetrics.bandOverlap` on purpose: a test that reads the constant back would pass with the
+    /// gap put back.
+    func test_layout_openPanel_sharesTheBandsColumnAndOverlapsItsBottomEdge() throws {
         let layout = NotchGeometry.layout(on: Self.builtIn, panelSize: Self.panelSize)
 
-        XCTAssertEqual(layout.panel.maxY, Self.builtIn.notch!.minY - NotchMetrics.panelDrop)
-        XCTAssertEqual(layout.panel.midX, Self.builtIn.notch!.midX)
-        XCTAssertEqual(layout.panel.size, Self.panelSize, "the size the content reported")
+        XCTAssertEqual(layout.glance.width, layout.panel.width, "one column, not two shapes that nearly line up")
+        XCTAssertEqual(layout.glance.minX, layout.panel.minX, "and the same left edge")
+        XCTAssertEqual(layout.glance.maxX, layout.panel.maxX, "and the same right edge")
+        XCTAssertGreaterThan(layout.panel.maxY, layout.glance.minY, "the Panel reaches into the band, never below it")
+        XCTAssertEqual(layout.panel.maxY, layout.glance.minY + 1, "by one point, not by twenty")
     }
 
-    /// AC 3's fourth screen, and the reason the band is arithmetic rather than a screenshot: a notch
-    /// of a different width. The two wings are constants and the middle is whatever the hardware is, so
-    /// a wider cutout widens the band and the figure's wing keeps the same room either side of it.
-    func test_layout_aNotchOfADifferentWidth_widensTheBandAndKeepsBothWings() throws {
+    /// AC 3's fourth screen, and the reason the band is arithmetic rather than a screenshot: a notch of
+    /// a different width. The figure's wing and the minimum margin are constants and the middle is
+    /// whatever the hardware is, so a wider cutout widens the band and both keep their room.
+    ///
+    /// This is also where #21's one column stops being one: the Panel's content is a fixed 280, so a
+    /// 310 band overhangs it by 15pt either side of the join. Pinned here rather than wished away — the
+    /// step is what `NotchHost.bandCorners` refuses to square, and #22's single window is what removes
+    /// the case.
+    func test_layout_aCutoutWiderThanThePanel_growsTheBandAndCentresThePanelUnderIt() throws {
         let studio = ScreenSurface(
             frame: CGRect(x: 0, y: 0, width: 2_560, height: 1_440),
             notch: CGRect(x: 1_170, y: 1_408, width: 220, height: 32),
@@ -103,10 +114,28 @@ final class NotchGeometryTests: XCTestCase {
         )
         let layout = NotchGeometry.layout(on: studio, panelSize: Self.panelSize)
 
-        XCTAssertEqual(layout.glance.minX, 1_158, "the same 12pt of margin left of this cutout too")
-        XCTAssertEqual(layout.glance.maxX, 1_472, "…and the figure's 82 right of its edge at x 1390")
-        XCTAssertEqual(layout.glance.height, 32, "the cutout's own depth")
+        XCTAssertEqual(layout.glance.width, 310, "220 of cutout, 8 of margin, 82 of figure")
+        XCTAssertEqual(layout.glance.maxX, 1_472, "the figure's wing keeps its room")
+        XCTAssertEqual(layout.glance.minX, 1_162, "and the margin keeps its minimum")
         XCTAssertEqual(layout.glance.maxY, 1_440, "flush with the top edge of this display")
+        XCTAssertEqual(layout.glance.height, 32, "and the cutout's own depth")
+        XCTAssertEqual(layout.panel.midX, layout.glance.midX, "the Panel hangs from the band's centre")
+        XCTAssertEqual(layout.panel.width, 280, "at its own width, so the silhouette steps here")
+        XCTAssertEqual(
+            layout.glance.minX, layout.panel.minX - 15,
+            "15pt of band overhangs the Panel on either side"
+        )
+    }
+
+    /// AC 5: the Panel keeps its top edge when its content grows a row — the edge it shares with the
+    /// band is fixed, so only the bottom moves, and the silhouette never detaches.
+    func test_layout_thePanelGrowsDownwards_keepingTheEdgeItSharesWithTheBand() {
+        let shortRead = NotchGeometry.layout(on: Self.builtIn, panelSize: CGSize(width: 280, height: 340))
+        let tallRead = NotchGeometry.layout(on: Self.builtIn, panelSize: CGSize(width: 280, height: 620))
+
+        XCTAssertEqual(tallRead.panel.maxY, shortRead.panel.maxY, "the shared edge did not move")
+        XCTAssertEqual(tallRead.panel.minY, shortRead.panel.minY - 280, "the bottom went down by the new rows")
+        XCTAssertEqual(tallRead.glance, shortRead.glance, "and the band is where it was")
     }
 
     /// AC 4: the band keeps one size whatever figure it carries. The reading is not an input to the
@@ -156,7 +185,7 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(layout.glance.maxY, 1_080, "flush with the top edge, where a notch would be")
         XCTAssertEqual(layout.glance.midX, 960, "at the menu bar's centre")
         XCTAssertEqual(
-            layout.glance.size, CGSize(width: 279, height: 32),
+            layout.glance.size, CGSize(width: 280, height: 32),
             "the same shape this Mac's notch gets, from a nominal cutout"
         )
         XCTAssertEqual(
@@ -165,7 +194,8 @@ final class NotchGeometryTests: XCTestCase {
         )
     }
 
-    /// With no notch to hang from, the Panel drops from the Glance the Operator clicked.
+    /// With no notch to hang from, the Panel still hangs from the band — the same shared edge and the
+    /// same overlap, because the join is what makes it one shape (#21 AC 2).
     func test_layout_topCentre_hangsThePanelFromTheGlance() {
         let external = ScreenSurface(
             frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
@@ -174,7 +204,8 @@ final class NotchGeometryTests: XCTestCase {
         )
         let layout = NotchGeometry.layout(on: external, panelSize: Self.panelSize)
 
-        XCTAssertEqual(layout.panel.maxY, layout.glance.minY - NotchMetrics.panelDrop)
+        XCTAssertEqual(layout.panel.maxY, layout.glance.minY + 1)
+        XCTAssertEqual(layout.panel.minX, layout.glance.minX)
         XCTAssertEqual(layout.panel.midX, external.frame.midX)
     }
 

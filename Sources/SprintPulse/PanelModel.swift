@@ -254,6 +254,18 @@ final class PanelModel: ObservableObject {
         return nil
     }
 
+    /// The Glance's marker, on its own.
+    ///
+    /// Two states wear it: the band has no figure to state (invariant 13 — nothing read yet, or No Work
+    /// Assigned), and the band has withdrawn its figure because the Panel is stating it (#21 AC 3). The
+    /// marker stays either way, so the surface is the same shape and the same click target and the
+    /// withdrawal is never mistaken for a reading that went missing.
+    static let glanceMarker = "▲"
+
+    /// The band's spoken form when it carries no figure: the instrument's name, with nothing counted
+    /// after it.
+    static let glanceSpokenName = "Sprint Pulse"
+
     /// What the Glance shows: the marker and Points remaining, or the marker alone.
     ///
     /// The marker is the Glance's own — it stays so the surface is the same shape and the same click
@@ -267,8 +279,8 @@ final class PanelModel: ObservableObject {
     /// ADR-0006's Consequence). The Glance claims nothing that can go stale or be demoted, which is
     /// why #12's withdrawal and #13's caps bind the Panel and leave this figure alone.
     var glanceLabel: String {
-        guard let instrument else { return "▲" }
-        return "▲ \(Self.formatted(instrument.pointsRemaining))"
+        guard let instrument else { return Self.glanceMarker }
+        return "\(Self.glanceMarker) \(Self.formatted(instrument.pointsRemaining))"
     }
 
     /// The Glance's spoken form: the marker is decorative and a bare number is not a sentence, so
@@ -281,8 +293,8 @@ final class PanelModel: ObservableObject {
     /// withdraws is Confidence, which the Glance never claimed. Where a reading came from and when
     /// it was taken are the Panel's to say, and the Panel is one click away by design.
     var glanceAccessibilityLabel: String {
-        guard let instrument else { return "Sprint Pulse" }
-        return "Sprint Pulse, \(Self.formatted(instrument.pointsRemaining)) Points remaining"
+        guard let instrument else { return Self.glanceSpokenName }
+        return "\(Self.glanceSpokenName), \(Self.formatted(instrument.pointsRemaining)) Points remaining"
     }
 
     /// The Board the reading belongs to, whether it arrived from the fetch that just ran or from

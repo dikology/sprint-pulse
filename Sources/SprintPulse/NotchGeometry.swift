@@ -31,53 +31,47 @@ enum NotchGeometry {
     /// Both windows' frames on `surface`, given the Panel's measured size.
     ///
     /// The Glance is a band wrapped around the cutout, flush with the top edge of the screen, and the
-    /// Panel hangs below that band's bottom edge. Which cutout is being wrapped is the only thing the
-    /// two kinds of screen differ in, so the band's size is one arithmetic
-    /// (`NotchMetrics.bandSize`) and its top edge is `frame.maxY` on both.
+    /// Panel hangs from its bottom edge — one column and a point of overlap, which is what lets two
+    /// windows read as one silhouette (#21 AC 2). The two kinds of screen differ in exactly two things,
+    /// which cutout the band wraps and what pins it sideways; the band's width is one arithmetic
+    /// (`NotchMetrics.columnWidth`) and its top edge is `frame.maxY` on both.
     static func layout(on surface: ScreenSurface, panelSize: CGSize) -> NotchLayout {
-        let size: CGSize
-        let band: CGRect
-        let panelCentre: CGFloat
-        if let notch = surface.notch {
-            size = NotchMetrics.bandSize(notchWidth: notch.width, notchDepth: notch.height)
-            band = placed(
-                at: CGPoint(x: notch.minX - NotchMetrics.bandLeftWing, y: surface.frame.maxY - size.height),
-                size: size,
-                in: surface.frame
-            )
-            // The Panel is centred on the notch rather than on the screen, because the notch is where
-            // the click came from.
-            panelCentre = notch.midX
-        } else {
-            // #25 AC 2: on a screen with no cutout the same band is drawn where a notch would be — the
-            // menu bar's own centre, flush with the top edge, from a nominal cutout of this Mac's
-            // measurements. ADR-0007 rejected keeping it below the bar the way M1.5 did: a black tab
-            // under the bar is neither hardware nor system UI, and the cost the ADR names — a long app
-            // menu reaching the centre and meeting it — is the one accepted.
-            size = NotchMetrics.bandSize(
-                notchWidth: NotchMetrics.nominalNotchWidth,
-                notchDepth: NotchMetrics.nominalNotchDepth
-            )
-            band = placed(
-                at: CGPoint(x: surface.frame.midX - size.width / 2, y: surface.frame.maxY - size.height),
-                size: size,
-                in: surface.frame
-            )
-            panelCentre = surface.frame.midX
-        }
-
-        return NotchLayout(
-            glance: band,
-            panel: placed(
-                at: CGPoint(
-                    x: panelCentre - panelSize.width / 2,
-                    y: band.minY - NotchMetrics.panelDrop - panelSize.height
-                ),
-                size: panelSize,
-                in: surface.frame
-            ),
-            atNotch: surface.notch != nil
+        // The cutout: the hardware where there is any, and a nominal one of this Mac's measurements
+        // where there is none, so the same band is drawn in the place a notch would have been (#25 AC 2).
+        // ADR-0007 rejected keeping it below the menu bar the way M1.5 did — a black tab under the bar is
+        // neither hardware nor system UI — and the cost it names, a long app menu reaching the centre and
+        // meeting the band, is the one accepted.
+        let cutout = surface.notch ?? CGRect(
+            x: surface.frame.midX - NotchMetrics.nominalNotchWidth / 2,
+            y: surface.frame.maxY - NotchMetrics.nominalNotchDepth,
+            width: NotchMetrics.nominalNotchWidth,
+            height: NotchMetrics.nominalNotchDepth
         )
+        let column = NotchMetrics.columnWidth(notchWidth: cutout.width)
+        // A real cutout pins the band's right edge a wing clear of the hardware, because that is where
+        // the figure has to go. A nominal one has no hardware to keep clear, so the band is centred.
+        let bandRight = surface.notch != nil
+            ? cutout.maxX + NotchMetrics.bandFigureWing
+            : surface.frame.midX + column / 2
+        let band = placed(
+            at: CGPoint(x: bandRight - column, y: surface.frame.maxY - cutout.height),
+            size: CGSize(width: column, height: cutout.height),
+            in: surface.frame
+        )
+
+        // The Panel is centred on the band it hangs from rather than on the cutout, because the band is
+        // the surface the Operator clicked — and on a cutout wide enough to overhang the Panel's column
+        // the two are no longer the same x.
+        let panel = placed(
+            at: CGPoint(
+                x: band.midX - panelSize.width / 2,
+                y: band.minY + NotchMetrics.bandOverlap - panelSize.height
+            ),
+            size: panelSize,
+            in: surface.frame
+        )
+
+        return NotchLayout(glance: band, panel: panel, atNotch: surface.notch != nil)
     }
 
     /// The rect of `size` resting on `origin` as its bottom-left corner, slid back inside `frame`.
@@ -120,13 +114,18 @@ struct NotchLayout: Equatable {
     var atNotch: Bool
 }
 
-/// The host's own measurements: the band's two wings, the cutout a screen without one is given, and
-/// the Panel's drop.
+/// The host's own measurements: the band's wings, the cutout a screen without one is given, the
+/// Panel's column, and the overlap that joins the two surfaces.
 enum NotchMetrics {
-    /// The band's left wing: how far the drawn shape reaches past the cutout so the hardware's own
-    /// edge is inside it rather than beside it. Empty by design — the Glance has one figure, and it
-    /// is in the right wing (`CONTEXT.md`, Glance; ADR-0007).
-    static let bandLeftWing: CGFloat = 12
+    /// The Panel's own column — the width `PanelView` fixes its content at, and the width the band
+    /// grows to so that the two windows share one silhouette (#21 AC 2). One number in one place
+    /// because the two surfaces disagreeing about it *is* the seam.
+    static let panelContentWidth: CGFloat = 280
+
+    /// The band's left wing: the *least* margin the drawn shape keeps past the cutout's edge so the
+    /// hardware is inside it rather than beside it. The empty wing absorbs whatever the Panel's column
+    /// leaves over, which is why this is a minimum rather than the margin this Mac actually gets.
+    static let bandLeftWing: CGFloat = 8
 
     /// The band's right wing: the room the widest figure the Glance may carry needs, clear of the
     /// cutout. A fixed width rather than a measurement of the text, so the band keeps one size
@@ -137,34 +136,44 @@ enum NotchMetrics {
     /// never against the corner the band rounds.
     static let bandFigureInset: CGFloat = 12
 
+    /// The room the figure is allowed to draw in: the wing less its margin. The Glance's text is given
+    /// exactly this width, so a reading wider than the wing is bounded by the wing — the figure can
+    /// never run leftwards over the cutout it is supposed to sit clear of (#25 AC 1).
+    static let bandFigureRoom = bandFigureWing - bandFigureInset
+
     /// The cutout a screen with none is given, so the band is the same shape where a notch would be:
     /// this Mac's own measurements, which `NotchGeometryTests` pins against the real notch.
     static let nominalNotchWidth: CGFloat = 185
     static let nominalNotchDepth: CGFloat = 32
 
-    /// The band's size for a cutout of the given width and depth: the cutout itself, `bandLeftWing` of
-    /// margin on the left that makes the hardware disappear into the drawn shape, and
-    /// `bandFigureWing` on the right for the figure.
-    ///
-    /// One size whatever the band carries (#25 AC 4): the width is a fixed wing, never a measurement of
-    /// the text in it, so counting Points cannot move the click target under the cursor — or move it
-    /// again every evening.
-    static func bandSize(notchWidth: CGFloat, notchDepth: CGFloat) -> CGSize {
-        CGSize(width: notchWidth + bandLeftWing + bandFigureWing, height: notchDepth)
+    /// The band's width for a cutout of the given width: enough column for the cutout, the figure's
+    /// wing, and the minimum margin — and never less than the Panel's own column, because the two
+    /// surfaces are one shape (#21 AC 2). A cutout wider than the Panel grows the band rather than
+    /// clipping the figure's wing.
+    static func columnWidth(notchWidth: CGFloat) -> CGFloat {
+        max(panelContentWidth, notchWidth + bandLeftWing + bandFigureWing)
     }
 
     /// The band to put the Glance window at before the screens have been read: the nominal cutout's
     /// shape, which is also the shape a screen with no notch is drawn.
-    static let nominalBandSize = bandSize(
-        notchWidth: nominalNotchWidth,
-        notchDepth: nominalNotchDepth
+    static let nominalBandSize = CGSize(
+        width: columnWidth(notchWidth: nominalNotchWidth),
+        height: nominalNotchDepth
     )
 
-    /// How far below the band's bottom edge the Panel's top edge sits. #21 takes this to nothing so
-    /// that the two surfaces read as one silhouette; until then the Panel is a separate window.
-    static let panelDrop: CGFloat = 6
+    /// How far the Panel's top edge reaches *into* the band rather than sitting below it. One point of
+    /// overlap, with the band's window above the Panel's in the stacking order: two abutting rects leave
+    /// a hairline of desktop between them at a non-integer backing scale, and that hairline is the seam
+    /// #21 AC 2 is about.
+    static let bandOverlap: CGFloat = 1
 
-    /// The size to place the Panel at before its content has reported one. The Panel is 280 wide by
-    /// its own `.frame`, so only the height is a guess.
-    static let defaultPanelSize = CGSize(width: 280, height: 340)
+    /// The radius of every corner that meets the desktop, on both surfaces. One constant because they
+    /// are one silhouette: while the Panel is open the band's bottom corners are square (they are inside
+    /// the shape then — see `NotchHost.bandCorners`), so the Panel's bottom corners are the only rounded
+    /// ones on screen.
+    static let cornerRadius: CGFloat = 8
+
+    /// The size to place the Panel at before its content has reported one. The width is the Panel's own
+    /// column, so only the height is a guess.
+    static let defaultPanelSize = CGSize(width: panelContentWidth, height: 340)
 }

@@ -21,7 +21,7 @@ struct NotchShape: Shape {
     }
 
     var corners: Corners = [.bottomLeft, .bottomRight]
-    var radius: CGFloat = 8
+    var radius: CGFloat = NotchMetrics.cornerRadius
 
     func path(in rect: CGRect) -> Path {
         let r = min(radius, min(rect.width, rect.height) / 2)

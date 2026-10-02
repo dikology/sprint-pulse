@@ -11,6 +11,9 @@ import SwiftUI
 /// Panel belongs to the window layer (`NotchWindows`), which owns the window this view is hosted in; what
 /// is left here is the thing the Operator looks at, and the accessibility of it.
 ///
+/// Both models are observed, for two different reasons: the reading arriving changes what the band
+/// states, and the Panel opening changes whether it may state it at all (#21 AC 3).
+///
 /// Two properties of #9 still hold and are the reason for this view's shape: nothing loops or
 /// animates, and the figure is a readable string rather than an image or a colour.
 ///
@@ -18,8 +21,14 @@ import SwiftUI
 /// whole band is one accessibility element whose spoken label is the sentence the figure stands in for
 /// and whose press action is the click. That is what AC 5 is verified against.
 struct GlanceView: View {
+    /// Observed as well as the host: the band's text is the host's, but the host reads the figure out
+    /// of this model, and a band that did not re-render when a read landed would go on showing the
+    /// number from before it.
     @ObservedObject var panel: PanelModel
-    let host: NotchHost
+
+    /// Observed, not read once: the band's own wording changes with the Panel's state (#21 AC 3), and
+    /// the host is what decides that state.
+    @ObservedObject var host: NotchHost
 
     /// The click, reached from the accessibility tree rather than the mouse: VoiceOver's press
     /// action on the Glance opens the Panel exactly as a click does, and asks the Board for the same
@@ -28,18 +37,22 @@ struct GlanceView: View {
     let press: () -> Void
 
     var body: some View {
-        Text(panel.glanceLabel)
+        Text(host.glanceText)
             .font(.callout.bold().monospacedDigit())
             .foregroundStyle(NotchPalette.figure)
-            // The figure sits at the right end of the band's wing, so it never overlaps the cutout.
+            // The figure's box is the wing's room and nothing more, which ends exactly where the cutout
+            // does: a reading wider than expected is bounded by the wing rather than running leftwards
+            // over the hardware it is supposed to sit clear of (#25 AC 1).
+            .frame(width: NotchMetrics.bandFigureRoom, alignment: .trailing)
             .padding(.trailing, NotchMetrics.bandFigureInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             // The band is hardware: the cutout's black, square against the top edge of the screen and
-            // rounded where it meets the desktop. No system colour is in this surface at all, so the
+            // rounded only where it meets the desktop — which, while the Panel is open, is nowhere on
+            // its bottom edge (`host.bandCorners`). No system colour is in this surface at all, so the
             // shape is drawn by the view rather than being a window background with an edge (ADR-0007).
-            .background(NotchShape().fill(NotchPalette.surface))
+            .background(NotchShape(corners: host.bandCorners).fill(NotchPalette.surface))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(panel.glanceAccessibilityLabel)
+            .accessibilityLabel(host.glanceSpokenText)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { press() }
             .background(SettingsRoute(host: host))

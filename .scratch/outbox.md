@@ -174,3 +174,20 @@ cross-repo claim: a mascot borrowed from a reference design was tested against t
 existing honesty invariants first; the one property that kept it — invariance to every reading — was
 cheaper to adopt than the state-depicting plan it replaced.
 Refs: `docs/adr/0007-the-glance-reads-as-hardware.md`; `docs/agents/product.md` (Surfaces; Presentation, motion, and accessibility; Delivery)
+
+### 2026-10-02 — A visual acceptance criterion gets measured, not asserted
+
+M1.6's first two slices landed (#25, #21): the Glance is now the notch's own strip widened into a band
+flush with the top edge of the screen, and the Panel hangs from it in the same black with the band's
+figure withdrawn while it is open. Two claims worth taking elsewhere. (1) "No gap or seam" is not
+falsifiable by asserting on frames: two `NSWindow`s can share a column to the point and still show a
+light wedge where the upper one's rounded corner meets the lower one's square one. The check that found
+it sampled a screenshot row by row for luminance across the join — the desktop beside the silhouette
+going from 16 light pixels to 30 as the corner curve descended. The fix is a state, not a constant: the
+corner squares only while the surface below actually covers it, and stays round where it does not. An
+agent told to make two things look like one should measure the seam rather than trust the arithmetic that
+aligns them. (2) An always-dark surface inside a Light Mode system is one `window.appearance` line, and
+the guard that keeps it honest is the negative one: `NSApp.appearance` must be absent, because the
+app-wide form would take the configuration window with it — the per-window version is what lets one app
+hold a hardware-black surface and a system-following one at the same time.
+Refs: #25; #21; `Sources/SprintPulse/NotchHost.swift` (`bandCorners`, `glanceText`); `Tests/SprintPulseAppTests/SourceGuardTests.swift`

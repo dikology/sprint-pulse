@@ -170,7 +170,7 @@ final class NotchHostTests: XCTestCase {
         let layout = try XCTUnwrap(host.layout)
         XCTAssertTrue(layout.atNotch)
         XCTAssertEqual(
-            layout.glance.minX, 759,
+            layout.glance.minX, 758,
             "the band starts left of the cutout at x 771 rather than right of it at x 956"
         )
         XCTAssertEqual(layout.glance.maxY, 1_117, "flush with the top edge of this Mac's display")
@@ -243,6 +243,92 @@ final class NotchHostTests: XCTestCase {
         XCTAssertNil(host.layout, "and the previous placement is not the current one")
     }
 
+    // MARK: - The band's figure while the Panel is open (#21 AC 3)
+
+    /// ADR-0007 and `CONTEXT.md`'s "one number is shown once, under one name": the Panel states Points
+    /// remaining, so while it is open the band states nothing. The marker stays either way — the band is
+    /// one shape and one click target whatever it carries (#25 AC 4) — and the spoken form withdraws
+    /// with the visible one, or VoiceOver would read a figure that is not there.
+    func test_theBandWithdrawsItsFigure_whileThePanelIsOpen_andRestatesIt_whenItCloses() async throws {
+        let reads = Reads()
+        let (panel, host) = makeHost(into: reads)
+        host.screensDidChange(to: [Self.builtIn])
+        await waitUntil { panel.instrument != nil }
+
+        XCTAssertEqual(host.glanceText, panel.glanceLabel, "closed: the band states the figure")
+        XCTAssertEqual(host.glanceSpokenText, panel.glanceAccessibilityLabel)
+
+        host.glanceWasClicked()
+        XCTAssertEqual(
+            host.glanceText, PanelModel.glanceMarker,
+            "open: the marker alone, because the Panel is stating that figure now"
+        )
+        XCTAssertEqual(host.glanceSpokenText, "Sprint Pulse", "and nothing counted in the spoken form")
+
+        host.panelWasDismissed()
+        XCTAssertEqual(host.glanceText, panel.glanceLabel, "the figure returns with the closed Panel")
+        XCTAssertEqual(reads.count, 0, "and none of this asked the Board anything — the corpus is on screen")
+    }
+
+    /// The withdrawal is a state of the surface, not of the reading: a band with no figure to withdraw
+    /// looks the same with the Panel open or shut. Invariant 13 is not made an exception by #21's rule —
+    /// `No Work Assigned` gives the band nothing to state before the click and nothing after it.
+    func test_theBandShowsTheMarkerAlone_whenThereIsNoFigureToWithdraw() async throws {
+        let (panel, host) = makeHost(into: Reads())
+        panel.scenario = .noWorkAssigned
+        await waitUntil { panel.content != .nothing }
+
+        XCTAssertEqual(
+            host.glanceText, PanelModel.glanceMarker,
+            "an empty My Work gives the band no number, whatever the Panel's state"
+        )
+
+        host.glanceWasClicked()
+
+        XCTAssertEqual(host.glanceText, PanelModel.glanceMarker, "and opening the Panel changes nothing")
+        XCTAssertEqual(host.glanceSpokenText, "Sprint Pulse")
+    }
+
+    /// AC 2's other half, and the thing a screenshot caught that the frames alone could not: with the
+    /// Panel open, the band's bottom edge is *inside* the silhouette, so a radius there lets the desktop
+    /// show through at the join — a light wedge at each side of it. Closed, the band is a notch tab and
+    /// rounds where it meets the desktop.
+    func test_theBandsBottomCornersGoSquare_whileThePanelIsOpen() throws {
+        let (_, host) = makeHost(into: Reads())
+        host.screensDidChange(to: [Self.builtIn])
+        let layout = try XCTUnwrap(host.layout)
+        XCTAssertEqual(layout.panel.width, layout.glance.width, "here the Panel covers the band")
+
+        XCTAssertEqual(
+            host.bandCorners, [.bottomLeft, .bottomRight],
+            "closed: rounded where the band meets the desktop"
+        )
+
+        host.glanceWasClicked()
+        XCTAssertTrue(
+            host.bandCorners.isEmpty,
+            "open: square, because the Panel continues the same column downwards"
+        )
+
+        host.panelWasDismissed()
+        XCTAssertEqual(host.bandCorners, [.bottomLeft, .bottomRight], "and the tab rounds again")
+    }
+
+    /// The rule's other side, on a cutout wide enough to overhang the Panel's column: there the band's
+    /// bottom corners still meet the desktop, so squaring them would trade the wedge for a hard corner
+    /// in mid-air. The join is closed exactly as far as the two surfaces overlap — #22's one window is
+    /// what makes the overhang impossible.
+    func test_theBandKeepsItsRadius_whereThePanelDoesNotCoverIt() throws {
+        let (_, host) = makeHost(into: Reads())
+        host.screensDidChange(to: [Self.wideNotch])
+        let layout = try XCTUnwrap(host.layout)
+        XCTAssertLessThan(layout.panel.width, layout.glance.width, "the band overhangs the Panel here")
+
+        host.glanceWasClicked()
+
+        XCTAssertEqual(host.bandCorners, [.bottomLeft, .bottomRight], "so its corners stay rounded")
+    }
+
     // MARK: - Helpers
 
     /// This Mac's built-in display, as `NSScreen` reports it: a notch 185 wide and 32 deep, whose
@@ -250,6 +336,15 @@ final class NotchHostTests: XCTestCase {
     private static let builtIn = ScreenSurface(
         frame: CGRect(x: 0, y: 0, width: 1_728, height: 1_117),
         notch: CGRect(x: 771, y: 1_085, width: 185, height: 32),
+        isMain: true
+    )
+
+    /// A display whose cutout is wider than the Panel's column, so the band it wraps is wider than the
+    /// Panel hanging from it. No Mac Apple has shipped has a cutout this wide; the arithmetic does not
+    /// get to assume it, because the point width of a notch grows when the display is scaled.
+    private static let wideNotch = ScreenSurface(
+        frame: CGRect(x: 0, y: 0, width: 2_560, height: 1_440),
+        notch: CGRect(x: 1_170, y: 1_408, width: 220, height: 32),
         isMain: true
     )
 

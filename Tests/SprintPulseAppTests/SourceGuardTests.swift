@@ -93,4 +93,69 @@ final class SourceGuardTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Whose appearance is whose (#21)
+
+    /// AC 4, checked as an absence: the forced dark scheme belongs to the notch windows and reaches
+    /// nothing else. ADR-0007 leaves Settings an ordinary window that follows the system appearance,
+    /// and the one way to break that from the notch side is to force the appearance somewhere broader
+    /// than the two windows — on `NSApp`, on the scene, or in the Panel's own view tree.
+    ///
+    /// AC 1's other half is here too: the notch surfaces are black with dark content, and a
+    /// `windowBackgroundColor` card is the system surface that was taken out.
+    func test_theForcedAppearanceIsTheNotchWindows_ownAndNoonesElse() throws {
+        let marks = ["NSAppearance", "appearance =", "preferredColorScheme", "\\.colorScheme"]
+
+        for url in try swiftFiles(under: "Sources") {
+            guard url.lastPathComponent != "NotchWindows.swift" else { continue }
+            let text = try String(contentsOf: url, encoding: .utf8)
+            for mark in marks {
+                XCTAssertFalse(
+                    text.contains(mark),
+                    "\(url.lastPathComponent) forces an appearance with \(mark) — only the two notch "
+                        + "windows may; Settings follows the system (#21 AC 4)"
+                )
+            }
+        }
+
+        let windows = try String(
+            contentsOf: repoRoot.appendingPathComponent("Sources/SprintPulse/NotchWindows.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            windows.contains("NSAppearance(named: .darkAqua)"),
+            "the notch windows must name the dark scheme themselves, or the Panel is a light card "
+                + "under a black band in Light Mode (#21 AC 1)"
+        )
+        // …and name it on the *window*. Setting `NSApp.appearance` would be one line shorter and would
+        // take Settings with it, which is the half of AC 4 that only shows on an Operator's machine.
+        XCTAssertFalse(
+            windows.contains("NSApp.appearance"),
+            "the scheme must be per window — on NSApp it reaches the Settings window too (#21 AC 4)"
+        )
+    }
+
+    /// AC 1: the notch surfaces carry no system surface colour at all. `windowBackgroundColor` and the
+    /// separator stroke are what made the Panel look like a system card; the band, the Panel, and the
+    /// menu it hosts are drawn from `NotchPalette` now, and a system colour creeping back into any of
+    /// those files would be visible in Light Mode only — which is the half of this AC no running test
+    /// can reach.
+    func test_theNotchSurfacesCarryNoSystemSurfaceColour() throws {
+        let marks = ["windowBackgroundColor", "separatorColor", "controlBackgroundColor", "textBackgroundColor"]
+
+        // `FlowStateMenus` is the Unmapped Status menu AC 1 names by hand, so it is in the scan even
+        // though it is shared with the Status Map editor in Settings.
+        for name in ["PanelView.swift", "GlanceView.swift", "NotchShape.swift", "FlowStateMenus.swift"] {
+            let text = try String(
+                contentsOf: repoRoot.appendingPathComponent("Sources/SprintPulse/\(name)"),
+                encoding: .utf8
+            )
+            for mark in marks {
+                XCTAssertFalse(
+                    text.contains(mark),
+                    "\(name) still fills itself with \(mark) — the notch host's surfaces are its own black"
+                )
+            }
+        }
+    }
 }

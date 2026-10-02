@@ -1,15 +1,19 @@
-import AppKit
 import SwiftUI
 import SprintPulseCore
 
-/// The Panel: the expanded surface a click on the Glance opens, directly below the notch (#19). It
-/// renders the fields of an `Instrument` and holds no forecast logic of its own. Every number shown
-/// is reproducible by hand from the others on screen (CONTEXT invariant 10): the per-Flow-State rows
-/// sum to the Actionable and Waiting totals.
+/// The Panel: the expanded surface a click on the Glance opens, hanging from the band as one
+/// silhouette (#21) below the notch. It renders the fields of an `Instrument` and holds no forecast
+/// logic of its own. Every number shown is reproducible by hand from the others on screen (CONTEXT
+/// invariant 10): the per-Flow-State rows sum to the Actionable and Waiting totals.
 ///
-/// Two properties of the whole panel are load-bearing (#9): it ships with no motion — no spinner,
-/// no animating disclosure, nothing that loops and demands peripheral attention — and nothing
-/// conveys meaning by image or colour alone, so every row reads usefully under VoiceOver.
+/// Two properties of the whole panel are load-bearing (#9): it ships with no motion — no spinner, no
+/// animating disclosure, nothing that loops and demands peripheral attention — and nothing conveys
+/// meaning by image or colour alone, so every row reads usefully under VoiceOver.
+///
+/// It is black with dark content whatever the system appearance (ADR-0007): the surface is the band's
+/// own black and the scheme is forced on the window that hosts this view (`NotchWindows`), so no
+/// system surface colour appears anywhere in this file. While it is open, Points remaining is stated
+/// here and not on the band (#21 AC 3).
 ///
 /// Below the header sits one state of `PanelModel.Content` (#11): the reading, an empty My Work,
 /// a sprint that has to be named, a Board with no active sprint, or nothing read yet. A failed
@@ -44,13 +48,13 @@ struct PanelView: View {
             }
         }
         .padding(12)
-        .frame(width: 280)
-        // The window this is drawn in is borderless and transparent, so the card is the view's own:
-        // a standard window background with an edge, so the Panel reads as one surface rather than
-        // as loose text over whatever is behind it. The corner radius is what the window's shadow
-        // follows.
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.windowBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(NSColor.separatorColor)))
+        .frame(width: NotchMetrics.panelContentWidth)
+        // The Panel is the band extended downward, so it is filled with the band's own black and its top
+        // corners stay square: one point of them is behind the band and the rest would show a nick of
+        // desktop just under it (#21 AC 2). The system window background and the separator stroke are
+        // gone — those two were what made this read as a system card rather than as hardware (ADR-0007).
+        // The corner radius is what the window's shadow follows.
+        .background(NotchShape().fill(NotchPalette.surface))
     }
 
     /// What the panel is reading and how old its data is — one line (#18) — and the one control

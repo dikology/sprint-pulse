@@ -139,8 +139,8 @@ final class NotchWindows: NSObject {
         panelWindow.onSettings = { [weak self] in self?.host.openSettings() }
     }
 
-    /// What both windows share: above the menu bar, on every Space, still there when the app is not
-    /// the active one, and never animated.
+    /// What both windows share: above the menu bar, on every Space, still there when the app is not the
+    /// active one, never animated, and in the dark scheme whatever the system appearance says.
     private func configureCommon(_ window: NSWindow) {
         window.level = .statusBar
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -152,6 +152,15 @@ final class NotchWindows: NSObject {
         window.isOpaque = false
         window.hasShadow = true
         window.isReleasedWhenClosed = false
+        // ADR-0007: both surfaces are black, and a black surface with light content is unreadable, so the
+        // scheme is forced rather than followed. It is forced on the *window* because that is the one
+        // thing both halves of the content hang from: the SwiftUI subtree resolves its semantic colours
+        // through the hosting view's effective appearance, and the controls SwiftUI puts inside it — the
+        // pull-down that picks a Flow State for an unmapped status, the one that names the sprint —
+        // resolve theirs through the same window when they pop their menus. A `colorScheme` environment
+        // value would style the first and leave the second to the desktop. Settings is untouched on
+        // purpose: it is an ordinary window that follows the system appearance (#21 AC 4).
+        window.appearance = NSAppearance(named: .darkAqua)
     }
 
     // MARK: - Gestures
@@ -176,6 +185,16 @@ final class NotchWindows: NSObject {
         guard let layout = host.layout else { return }
         panelWindow.setFrame(layout.panel, display: false)
         panelWindow.makeKeyAndOrderFront(nil)
+        // The band stays in front of the Panel it hangs from. The two windows overlap by a point at
+        // their join, and with the band on top the Panel's square corners and its top-edge shadow are
+        // hidden behind the band's own black — which is what makes two windows read as one silhouette
+        // (#21 AC 2). Key status is untouched: a window can be key without being frontmost, so Esc, ⌘,,
+        // and ⌘Q still reach the Panel.
+        //
+        // This is the join held closed between two windows, which is what #21 asked for and what
+        // ADR-0007's Consequences say stops being needed: #22 makes the Glance and the Panel one window
+        // that resizes, and then there is no seam to hide.
+        glanceWindow.orderFrontRegardless()
     }
 
     /// Idempotent by design: the key-window loss and the global monitor can both describe one click
