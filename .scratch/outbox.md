@@ -191,3 +191,28 @@ the guard that keeps it honest is the negative one: `NSApp.appearance` must be a
 app-wide form would take the configuration window with it — the per-window version is what lets one app
 hold a hardware-black surface and a system-following one at the same time.
 Refs: #25; #21; `Sources/SprintPulse/NotchHost.swift` (`bandCorners`, `glanceText`); `Tests/SprintPulseAppTests/SourceGuardTests.swift`
+
+### 2026-10-05 — One window retires three alignment workarounds, and the pixels catch what 309 green tests could not
+
+#22 made the Glance grow into the Panel: one borderless panel whose frame is the band while the Panel is
+shut and the band extended to the reading's measured height while it is open, morphed over 220ms. Three
+things that existed only to hold a seam closed across two windows went with the second window —
+`bandOverlap` (#21's 1pt of overlap), the corner-state switch that squared the band's bottom while the
+Panel covered it, and the stacking-order dance that hid the Panel's square corners behind the band. A
+cutout wider than the Panel's column no longer steps the silhouette either: the window is the band's
+width all the way down and the reading is centred inside it.
+
+Two claims worth taking elsewhere. (1) A green suite is not evidence about pixels. 307 tests passed while
+the notch drew *nothing at all*: the silhouette's hosting view kept the `.zero` frame that autoresizing
+scales *from*; then `NSHostingView` clamped itself to its content's intrinsic size so the black never
+grew with the window; and a subview taller than the window spilled onto the desktop because AppKit does
+not clip a layer-backed subview to its parent. Each was caught by a window-list probe or a screenshot row
+scan, and none by an assertion — an agent that finishes GUI work at "tests pass" has finished nothing.
+(2) Where the animation *is* the feature, measure that the platform will run it: neither
+`animator().setFrame(_:display:)` nor `setFrame(_:display:animate:)` moves a borderless non-activating
+panel, with or without `animationBehavior`, so the morph steps its own frames and carries the gesture's
+clock across a mid-morph content change — which is what "short and identical every time" actually costs.
+Slowing that constant deliberately let a screenshot burst catch the intermediate shapes, and the same run
+surfaced a system keychain ACL prompt blocking the app's run loop mid-verification, which no test in the
+repository could have reported.
+Refs: #22; `Sources/SprintPulse/NotchWindow.swift`; `Sources/SprintPulse/NotchGeometry.swift`; `Tests/SprintPulseAppTests/SourceGuardTests.swift`

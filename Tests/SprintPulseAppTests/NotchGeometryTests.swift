@@ -2,8 +2,13 @@ import Foundation
 import XCTest
 @testable import SprintPulse
 
-/// Where the notch host puts its two windows, decided as arithmetic on a description of the
-/// screens rather than as AppKit calls (#19).
+/// Where the notch host puts its one window, decided as arithmetic on a description of the screens
+/// rather than as AppKit calls (#19, #21, #22).
+///
+/// Since #22 the decision is about a single rect that changes size, not two rects that have to be kept
+/// aligned: the window is the band while the Panel is shut and the band extended downward while it is
+/// open, so what the morph can do is stated here as the difference between two frames — the bottom edge
+/// travels, and nothing else.
 ///
 /// `ScreenSurface` is the whole of what the decision reads off `NSScreen` — the frame, the notch's own
 /// rect, and which screen is the main one — so a lid closing, an external display attaching, and a notch
@@ -81,32 +86,43 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(layout.glance.width, 280, "the Panel's own column, which is what makes the two one shape")
     }
 
-    // MARK: - One silhouette: the Panel hangs from the band (#21)
+    // MARK: - One window, two frames (#22)
 
-    /// AC 2: the Panel and the band are one continuous shape. Two windows can only read as one if they
-    /// share a column exactly and the Panel's top edge reaches *into* the band, so no hairline of
-    /// desktop can show through at the join. The point of overlap is stated as a number rather than as
-    /// `NotchMetrics.bandOverlap` on purpose: a test that reads the constant back would pass with the
-    /// gap put back.
-    func test_layout_openPanel_sharesTheBandsColumnAndOverlapsItsBottomEdge() throws {
+    /// AC 1: while the Panel is shut the window *is* the band — one rect, the Glance's own shape,
+    /// flush with the top edge of the screen. The numbers are worked out by hand from this Mac's
+    /// display (1728×1117, a notch 185 wide and 32 deep at x 771) and the Panel's 280pt column, not
+    /// recomputed from the arithmetic under test.
+    func test_theWindowIsTheBand_whileThePanelIsShut() throws {
         let layout = NotchGeometry.layout(on: Self.builtIn, panelSize: Self.panelSize)
 
-        XCTAssertEqual(layout.glance.width, layout.panel.width, "one column, not two shapes that nearly line up")
-        XCTAssertEqual(layout.glance.minX, layout.panel.minX, "and the same left edge")
-        XCTAssertEqual(layout.glance.maxX, layout.panel.maxX, "and the same right edge")
-        XCTAssertGreaterThan(layout.panel.maxY, layout.glance.minY, "the Panel reaches into the band, never below it")
-        XCTAssertEqual(layout.panel.maxY, layout.glance.minY + 1, "by one point, not by twenty")
+        XCTAssertEqual(layout.windowClosed, CGRect(x: 758, y: 1_085, width: 280, height: 32))
+    }
+
+    /// AC 1's other half, and the whole of what the morph is allowed to do: the open window is the
+    /// same column with its bottom edge moved down by the Panel's height. x, width and the top edge are
+    /// shared by the two frames, so AppKit's interpolation between them can only travel the bottom —
+    /// one shape growing, with nothing else on the Panel able to move.
+    ///
+    /// The Panel's content starts exactly at the band's bottom edge: the 1pt of overlap #21 needed to
+    /// hide the seam between two windows has no seam left to hide, and went with them.
+    func test_theWindowGrowsIntoThePanel_travellingOnlyItsBottomEdge() throws {
+        let layout = NotchGeometry.layout(on: Self.builtIn, panelSize: Self.panelSize)
+
+        XCTAssertEqual(layout.windowOpen, CGRect(x: 758, y: 745, width: 280, height: 372))
+        XCTAssertEqual(layout.windowOpen.minX, layout.windowClosed.minX, "the same left edge")
+        XCTAssertEqual(layout.windowOpen.maxX, layout.windowClosed.maxX, "the same right edge")
+        XCTAssertEqual(layout.windowOpen.maxY, layout.windowClosed.maxY, "and the same top edge")
+        XCTAssertEqual(layout.panel.maxY, layout.glance.minY, "the content starts at the band's bottom")
     }
 
     /// AC 3's fourth screen, and the reason the band is arithmetic rather than a screenshot: a notch of
     /// a different width. The figure's wing and the minimum margin are constants and the middle is
     /// whatever the hardware is, so a wider cutout widens the band and both keep their room.
     ///
-    /// This is also where #21's one column stops being one: the Panel's content is a fixed 280, so a
-    /// 310 band overhangs it by 15pt either side of the join. Pinned here rather than wished away — the
-    /// step is what `NotchHost.bandCorners` refuses to square, and #22's single window is what removes
-    /// the case.
-    func test_layout_aCutoutWiderThanThePanel_growsTheBandAndCentresThePanelUnderIt() throws {
+    /// This is where #21's silhouette used to step: the Panel's content is a fixed 280, so a 310 band
+    /// overhung it by 15pt at the join. With one window the step is gone — the *window* is the band's
+    /// width all the way down and the content is centred inside it.
+    func test_layout_aCutoutWiderThanThePanel_growsTheWindowAndCentresTheContentInIt() throws {
         let studio = ScreenSurface(
             frame: CGRect(x: 0, y: 0, width: 2_560, height: 1_440),
             notch: CGRect(x: 1_170, y: 1_408, width: 220, height: 32),
@@ -119,40 +135,40 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(layout.glance.minX, 1_162, "and the margin keeps its minimum")
         XCTAssertEqual(layout.glance.maxY, 1_440, "flush with the top edge of this display")
         XCTAssertEqual(layout.glance.height, 32, "and the cutout's own depth")
-        XCTAssertEqual(layout.panel.midX, layout.glance.midX, "the Panel hangs from the band's centre")
-        XCTAssertEqual(layout.panel.width, 280, "at its own width, so the silhouette steps here")
-        XCTAssertEqual(
-            layout.glance.minX, layout.panel.minX - 15,
-            "15pt of band overhangs the Panel on either side"
-        )
+        XCTAssertEqual(layout.windowOpen.width, 310, "one column the whole way down — no step")
+        XCTAssertEqual(layout.windowOpen, CGRect(x: 1_162, y: 1_068, width: 310, height: 372))
+        XCTAssertEqual(layout.panel.midX, layout.glance.midX, "the content hangs from the band's centre")
+        XCTAssertEqual(layout.panel.width, 280, "at its own width, inside the wider column")
     }
 
-    /// AC 5: the Panel keeps its top edge when its content grows a row — the edge it shares with the
-    /// band is fixed, so only the bottom moves, and the silhouette never detaches.
-    func test_layout_thePanelGrowsDownwards_keepingTheEdgeItSharesWithTheBand() {
+    /// AC 5: the window keeps its top edge when its content grows a row — the edge it shares with the
+    /// band is fixed, so only the bottom moves, and the shape never detaches from the notch.
+    func test_thePanelContentGrows_downwardsFromAnEdgeThatDoesNotMove() {
         let shortRead = NotchGeometry.layout(on: Self.builtIn, panelSize: CGSize(width: 280, height: 340))
         let tallRead = NotchGeometry.layout(on: Self.builtIn, panelSize: CGSize(width: 280, height: 620))
 
-        XCTAssertEqual(tallRead.panel.maxY, shortRead.panel.maxY, "the shared edge did not move")
-        XCTAssertEqual(tallRead.panel.minY, shortRead.panel.minY - 280, "the bottom went down by the new rows")
-        XCTAssertEqual(tallRead.glance, shortRead.glance, "and the band is where it was")
+        XCTAssertEqual(tallRead.windowOpen.maxY, shortRead.windowOpen.maxY, "the top edge did not move")
+        XCTAssertEqual(tallRead.windowOpen.minY, shortRead.windowOpen.minY - 280, "the bottom went down")
+        XCTAssertEqual(tallRead.windowOpen.height, 652, "32 of band and 620 of Panel")
+        XCTAssertEqual(tallRead.windowClosed, shortRead.windowClosed, "and the band is where it was")
     }
 
     /// AC 4: the band keeps one size whatever figure it carries. The reading is not an input to the
-    /// band at all — a Panel that gained a row moves its own bottom edge, never the Glance's rect — so
-    /// counting Points cannot move the click target out from under the cursor.
+    /// band at all — a Panel that gained a row moves the window's own bottom edge, never the Glance's
+    /// rect — so counting Points cannot move the click target out from under the cursor.
     func test_theBandKeepsOneSize_whateverTheReadingGrewTo() {
         let short = NotchGeometry.layout(on: Self.builtIn, panelSize: CGSize(width: 280, height: 340))
         let tall = NotchGeometry.layout(on: Self.builtIn, panelSize: CGSize(width: 280, height: 620))
 
         XCTAssertEqual(short.glance, tall.glance, "one band, whatever the reading below it")
+        XCTAssertEqual(short.windowClosed, tall.windowClosed, "and one window while it is shut")
     }
 
     /// One bound rather than a feature: nothing the host draws may leave the screen that hosts it.
     /// A Glance clipped off the edge is a Glance showing no number with no way back, and a screen
     /// arranged with an offset origin or a notch near an edge is the Operator's to arrange, not the
     /// app's to be surprised by.
-    func test_layout_keepsBothSurfacesInsideTheScreen_thatHostsThem() {
+    func test_layout_keepsTheWindowInsideTheScreen_thatHostsIt() {
         let offset = ScreenSurface(
             frame: CGRect(x: -1_728, y: 0, width: 300, height: 700),
             notch: CGRect(x: -1_670, y: 668, width: 185, height: 32),
@@ -160,7 +176,7 @@ final class NotchGeometryTests: XCTestCase {
         )
         let layout = NotchGeometry.layout(on: offset, panelSize: CGSize(width: 280, height: 400))
 
-        for rect in [layout.glance, layout.panel] {
+        for rect in [layout.glance, layout.panel, layout.windowClosed, layout.windowOpen] {
             XCTAssertGreaterThanOrEqual(rect.minX, offset.frame.minX, "\(rect) left of its screen")
             XCTAssertLessThanOrEqual(rect.maxX, offset.frame.maxX, "\(rect) off the right edge")
             XCTAssertGreaterThanOrEqual(rect.minY, offset.frame.minY, "\(rect) below its screen")
@@ -194,9 +210,9 @@ final class NotchGeometryTests: XCTestCase {
         )
     }
 
-    /// With no notch to hang from, the Panel still hangs from the band — the same shared edge and the
-    /// same overlap, because the join is what makes it one shape (#21 AC 2).
-    func test_layout_topCentre_hangsThePanelFromTheGlance() {
+    /// With no notch to hang from the window grows the same way: the same shared edge and the same
+    /// column, because the morph is one shape either way (#22 AC 1).
+    func test_layout_topCentre_growsTheWindowDownFromTheBand() {
         let external = ScreenSurface(
             frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
             notch: nil,
@@ -204,9 +220,9 @@ final class NotchGeometryTests: XCTestCase {
         )
         let layout = NotchGeometry.layout(on: external, panelSize: Self.panelSize)
 
-        XCTAssertEqual(layout.panel.maxY, layout.glance.minY + 1)
-        XCTAssertEqual(layout.panel.minX, layout.glance.minX)
-        XCTAssertEqual(layout.panel.midX, external.frame.midX)
+        XCTAssertEqual(layout.windowClosed, CGRect(x: 820, y: 1_048, width: 280, height: 32))
+        XCTAssertEqual(layout.windowOpen, CGRect(x: 820, y: 708, width: 280, height: 372))
+        XCTAssertEqual(layout.windowOpen.midX, external.frame.midX)
     }
 
     // MARK: - Screens

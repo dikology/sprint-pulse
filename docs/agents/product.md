@@ -168,7 +168,7 @@ present, `Hands Off`, a large Scope Delta, a mid-sprint cold start, and a sprint
 Sprint Pulse lives at the notch, not in the menu bar (M1.5,
 [ADR-0006](../adr/0006-notch-glance-opened-by-click.md)), and reads as part of it: one black shape,
 whatever the system appearance ([ADR-0007](../adr/0007-the-glance-reads-as-hardware.md)). Two
-surfaces, one window of its own:
+surfaces, drawn by one window that resizes between them (#22):
 
 - The **Glance** wraps the notch, flush with the top edge, and shows `▲` Points remaining in its
   right wing — on a screen without a notch, the same shape where a notch would be. It is hidden in
@@ -177,13 +177,14 @@ surfaces, one window of its own:
   Settings… and Quit.
 - A **click** on the Glance opens the **Panel**; a hover can at most say the Glance is clickable,
   because opening the Panel is a live read (invariant 14). The Panel grows out of the Glance as one
-  silhouette, and the Glance's figure withdraws while it is open. Esc or a click outside closes it.
+  silhouette, and the Glance's figure withdraws while it is open. A second click on the Glance, Esc,
+  or a click outside closes it — one control with two states, and no read for any of the three.
 - The Panel holds the reading and every figure it was computed from, one compressed source line
   (`Live · 4m`, `Cached · 3h`, `Fixture · cap-both`), Refresh, and nothing else — except the
   Unmapped Status warning's Flow State menu, resolved where it is seen.
 - **Settings** is a standard macOS window: Jira connection, Board, Estimate field, the Status Map
-  editor, and Fixture Mode with its scenario picker. Opening it issues no live read; each act on
-  the connection made in it issues exactly one.
+  editor, Fixture Mode with its scenario picker, and the "no animation" switch. Opening it issues no
+  live read; each act on the connection made in it issues exactly one.
 - ⌘, and ⌘Q work while the Panel has focus, and the Glance's right-click carries the same two
   commands. Neither can be taken for granted in an accessory app: with no menu bar on screen, the
   key equivalents are answered by the Panel's own window, and the route that actually reaches the
@@ -258,6 +259,6 @@ model is right and M1 is plumbing.
 
 ## Hosting
 
-Sprint Pulse ships as a standalone app — a menu-bar app through M1, its own notch windows since
+Sprint Pulse ships as a standalone app — a menu-bar app through M1, its own notch window since
 M1.5 — not a Boring Notch fork. Licence: MIT. See
 [ADR-0005](../adr/0005-standalone-app-not-a-boring-notch-fork.md).

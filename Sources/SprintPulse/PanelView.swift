@@ -1,19 +1,22 @@
 import SwiftUI
 import SprintPulseCore
 
-/// The Panel: the expanded surface a click on the Glance opens, hanging from the band as one
-/// silhouette (#21) below the notch. It renders the fields of an `Instrument` and holds no forecast
-/// logic of its own. Every number shown is reproducible by hand from the others on screen (CONTEXT
-/// invariant 10): the per-Flow-State rows sum to the Actionable and Waiting totals.
+/// The Panel: the expanded surface a click on the Glance opens — the Glance's own band grown downward
+/// into this (#21, #22), one silhouette with the notch rather than a window below it. It renders the
+/// fields of an `Instrument` and holds no forecast logic of its own. Every number shown is reproducible
+/// by hand from the others on screen (CONTEXT invariant 10): the per-Flow-State rows sum to the
+/// Actionable and Waiting totals.
 ///
-/// Two properties of the whole panel are load-bearing (#9): it ships with no motion — no spinner, no
-/// animating disclosure, nothing that loops and demands peripheral attention — and nothing conveys
-/// meaning by image or colour alone, so every row reads usefully under VoiceOver.
+/// Two properties of the whole panel are load-bearing (#9): nothing *in* the reading moves — no spinner,
+/// no animating disclosure, nothing that loops and demands peripheral attention — and nothing conveys
+/// meaning by image or colour alone, so every row reads usefully under VoiceOver. The one motion is the
+/// window's shape growing and shrinking (#22, ADR-0007), and it is not this view's: the same `PanelView`
+/// at the same size stands at every frame of the morph, revealed by a window that gets taller.
 ///
-/// It is black with dark content whatever the system appearance (ADR-0007): the surface is the band's
-/// own black and the scheme is forced on the window that hosts this view (`NotchWindows`), so no
-/// system surface colour appears anywhere in this file. While it is open, Points remaining is stated
-/// here and not on the band (#21 AC 3).
+/// It is black with dark content whatever the system appearance (ADR-0007): the black is the window's
+/// one silhouette (`NotchSilhouette`) rather than a background drawn here, and the scheme is forced on
+/// the window that hosts this view (`NotchWindow`), so no system surface colour appears anywhere in
+/// this file. While it is open, Points remaining is stated here and not on the band (#21 AC 3).
 ///
 /// Below the header sits one state of `PanelModel.Content` (#11): the reading, an empty My Work,
 /// a sprint that has to be named, a Board with no active sprint, or nothing read yet. A failed
@@ -49,12 +52,9 @@ struct PanelView: View {
         }
         .padding(12)
         .frame(width: NotchMetrics.panelContentWidth)
-        // The Panel is the band extended downward, so it is filled with the band's own black and its top
-        // corners stay square: one point of them is behind the band and the rest would show a nick of
-        // desktop just under it (#21 AC 2). The system window background and the separator stroke are
-        // gone — those two were what made this read as a system card rather than as hardware (ADR-0007).
-        // The corner radius is what the window's shadow follows.
-        .background(NotchShape().fill(NotchPalette.surface))
+        // No background of its own: the black this sits on is the window's one silhouette, which is what
+        // lets the window grow from the band into the Panel without a second shape having to keep its
+        // corners in step (#22, and #21 AC 2's seam gone with it).
     }
 
     /// What the panel is reading and how old its data is — one line (#18) — and the one control

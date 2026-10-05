@@ -4,10 +4,12 @@ import SprintPulseCore
 /// The standard macOS Settings window (#17): everything the Panel used to hold as
 /// configuration, moved out of a 280pt column into a window that has room for it.
 ///
-/// Four things live here: the Jira connection (base URL, Personal Access Token, Verify,
+/// Five things live here: the Jira connection (base URL, Personal Access Token, Verify,
 /// removal, and the identity Jira resolved — #10), the Board and the Estimate field (#11),
-/// the Status Map editor (#13), and Fixture Mode — the scenario picker (#9) and the #15
-/// switch onto the corpus and back. The Panel keeps the reading and Refresh, and one
+/// the Status Map editor (#13), Fixture Mode — the scenario picker (#9) and the #15 switch onto
+/// the corpus and back — and the "no animation" switch (#22), which is the Operator's own answer
+/// to the notch's structural motion, beside the system's Reduce Motion rather than instead of it.
+/// The Panel keeps the reading and Refresh, and one
 /// exception: the `Unmapped Status` warning's inline Flow State menu, resolved where it is
 /// seen. It is not duplicated here in a second affordance — both surfaces drive the model's
 /// one writer, so a mapping made on either shows up on the other in the same breath.
@@ -29,12 +31,16 @@ import SprintPulseCore
 struct SettingsView: View {
     @ObservedObject var panel: PanelModel
     @ObservedObject var setup: JiraSetupModel
+    /// Observed for one control: the "no animation" switch (#22) is the notch host's own preference,
+    /// persisted through it, and the host is what answers whether the shape may move.
+    @ObservedObject var host: NotchHost
 
     var body: some View {
         Form {
             jiraConnectionSection
             statusMapSection
             fixtureModeSection
+            motionSection
         }
         .formStyle(.grouped)
         .frame(width: 480)
@@ -301,6 +307,26 @@ struct SettingsView: View {
             }
         } else {
             note("Fixture mode — the Panel is reading a bundled scenario, not a live sprint, because there is no complete connection to read. Configuring one in the Jira connection above replaces this reading.")
+        }
+    }
+
+    // MARK: - Motion (#22)
+
+    /// The Operator's own switch on the notch's structural motion, which since #22 is what carries the
+    /// Panel open and shut: the shape grows and shrinks, identical every time, saying nothing about the
+    /// reading.
+    ///
+    /// It sits beside Reduce Motion rather than behind it, because "I find it distracting" is a
+    /// different reason from an accessibility need and should not require changing a system setting
+    /// every other app on the Mac reads too (`docs/agents/product.md` → Presentation, motion, and
+    /// accessibility). Either switch on its own is enough — `NotchHost.morphDuration` asks both — and
+    /// what this row does is persist the ask, which is the half of AC 4 that outlives the session.
+    @ViewBuilder
+    private var motionSection: some View {
+        Section(header: Text("Motion")) {
+            Toggle("No animation", isOn: $host.animationDisabled)
+
+            note("Opening and closing the Panel is Sprint Pulse's structural motion: the band grows into the Panel and back, the same short way every time, carrying nothing about your sprint. Switching it off makes both instant. Reduce Motion in System Settings does the same for every app; this switch is yours alone, and either one is enough.")
         }
     }
 

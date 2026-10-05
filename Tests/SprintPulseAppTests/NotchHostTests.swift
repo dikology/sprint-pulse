@@ -27,6 +27,7 @@ final class NotchHostTests: XCTestCase {
     private var baselines: BaselineStore { BaselineStore(defaults: defaults) }
     private var cache: SprintCacheStore { SprintCacheStore(defaults: defaults) }
     private var statusMaps: StatusMapStore { StatusMapStore(defaults: defaults) }
+    private var motions: MotionStore { MotionStore(defaults: defaults) }
 
     override func setUpWithError() throws {
         defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -49,7 +50,10 @@ final class NotchHostTests: XCTestCase {
         settings.boardID = boardID
     }
 
-    private func makeHost(into reads: Reads) -> (PanelModel, NotchHost) {
+    private func makeHost(
+        into reads: Reads,
+        reduceMotion: @escaping () -> Bool = { false }
+    ) -> (PanelModel, NotchHost) {
         let panel = PanelModel(
             settings: settings,
             credentials: credentials,
@@ -61,7 +65,7 @@ final class NotchHostTests: XCTestCase {
                 return corpusGateway()
             }
         )
-        return (panel, NotchHost(panel: panel))
+        return (panel, NotchHost(panel: panel, motion: motions, reduceMotion: reduceMotion))
     }
 
     // MARK: - A click is the read (AC 2, invariant 14)
@@ -219,21 +223,23 @@ final class NotchHostTests: XCTestCase {
         XCTAssertEqual(host.layout?.atNotch, true, "the lid is open again — the notch hosts it")
     }
 
-    /// The Panel hangs from the notch's bottom edge, so when its content grows the top edge stays
-    /// where the Operator saw it appear and only the bottom moves.
+    /// The window grows downward from the band, so when the Panel's content gains a row the top edge
+    /// stays where the Operator saw it appear and only the bottom moves (#22 AC 5's other half: a
+    /// reading arriving must not shove the shape around).
     func test_thePanelContentGrows_keepingItsTopEdgeAtTheNotch() throws {
         let (_, host) = makeHost(into: Reads())
         host.screensDidChange(to: [Self.builtIn])
-        let topEdge = try XCTUnwrap(host.layout?.panel.maxY)
+        let topEdge = try XCTUnwrap(host.layout?.windowOpen.maxY)
 
         host.panelContentSizeChanged(CGSize(width: 280, height: 620))
 
         XCTAssertEqual(host.layout?.panel.height, 620)
-        XCTAssertEqual(host.layout?.panel.maxY, topEdge, "the top edge did not move")
+        XCTAssertEqual(host.layout?.windowOpen.maxY, topEdge, "the top edge did not move")
+        XCTAssertEqual(host.layout?.windowOpen.height, 652, "32 of band and 620 of reading")
     }
 
     /// No host screen means no placement rather than a window at the origin: mid-unplug, the AppKit
-    /// layer is left with the frames it had instead of being handed a zero rect.
+    /// layer is left with the frame it had instead of being handed a zero rect.
     func test_noScreens_leaveThePlacementUndecided() {
         let (_, host) = makeHost(into: Reads())
         host.screensDidChange(to: [Self.builtIn])
@@ -289,44 +295,107 @@ final class NotchHostTests: XCTestCase {
         XCTAssertEqual(host.glanceSpokenText, "Sprint Pulse")
     }
 
-    /// AC 2's other half, and the thing a screenshot caught that the frames alone could not: with the
-    /// Panel open, the band's bottom edge is *inside* the silhouette, so a radius there lets the desktop
-    /// show through at the join — a light wedge at each side of it. Closed, the band is a notch tab and
-    /// rounds where it meets the desktop.
-    func test_theBandsBottomCornersGoSquare_whileThePanelIsOpen() throws {
-        let (_, host) = makeHost(into: Reads())
-        host.screensDidChange(to: [Self.builtIn])
-        let layout = try XCTUnwrap(host.layout)
-        XCTAssertEqual(layout.panel.width, layout.glance.width, "here the Panel covers the band")
+    // MARK: - The morph (#22 AC 1, 3, 4)
 
-        XCTAssertEqual(
-            host.bandCorners, [.bottomLeft, .bottomRight],
-            "closed: rounded where the band meets the desktop"
-        )
+    /// AC 1, as far as the host is asked to know it: the shape takes one short, fixed time to grow and
+    /// the same time to shrink, and the number is ADR-0007's. It is stated as a literal because a test
+    /// that read `NotchMetrics.structuralMorphDuration` back would pass with the morph set to four
+    /// seconds, or to none at all.
+    func test_theGlanceGrowsIntoThePanel_overOneShortMorph_inBothDirections() throws {
+        let (_, host) = makeHost(into: Reads())
+
+        XCTAssertEqual(host.morphDuration, 0.22, "220ms of structural motion, both ways")
 
         host.glanceWasClicked()
-        XCTAssertTrue(
-            host.bandCorners.isEmpty,
-            "open: square, because the Panel continues the same column downwards"
-        )
-
-        host.panelWasDismissed()
-        XCTAssertEqual(host.bandCorners, [.bottomLeft, .bottomRight], "and the tab rounds again")
+        XCTAssertEqual(host.morphDuration, 0.22, "and closing is the same morph, not a second animation")
     }
 
-    /// The rule's other side, on a cutout wide enough to overhang the Panel's column: there the band's
-    /// bottom corners still meet the desktop, so squaring them would trade the wedge for a hard corner
-    /// in mid-air. The join is closed exactly as far as the two surfaces overlap — #22's one window is
-    /// what makes the overhang impossible.
-    func test_theBandKeepsItsRadius_whereThePanelDoesNotCoverIt() throws {
-        let (_, host) = makeHost(into: Reads())
-        host.screensDidChange(to: [Self.wideNotch])
-        let layout = try XCTUnwrap(host.layout)
-        XCTAssertLessThan(layout.panel.width, layout.glance.width, "the band overhangs the Panel here")
+    /// AC 3: Reduce Motion makes it instant. The flag is read off the system through the closure the
+    /// composition root handed in — the host reads no `NSWorkspace` itself, exactly as it reads no
+    /// `NSScreen` — and read at the moment of the gesture, so a switch flipped mid-session is honoured
+    /// by the next open without the app having to observe anything.
+    func test_reduceMotionMakesOpenAndCloseInstant() throws {
+        let (_, host) = makeHost(into: Reads(), reduceMotion: { true })
+
+        XCTAssertEqual(host.morphDuration, 0, "instant, and not merely shorter")
+    }
+
+    /// AC 4: the Operator's own switch does the same thing, on its own and independently of the system's
+    /// — "I find it distracting" is a different reason from an accessibility need. Both switches are
+    /// exercised in both combinations because "independently of" is the half that breaks quietly when
+    /// somebody reads one flag where the other belongs.
+    func test_theNoAnimationPreferenceMakesTheMorphInstant_whateverReduceMotionSays() throws {
+        let (_, systemAllowsMotion) = makeHost(into: Reads())
+        systemAllowsMotion.animationDisabled = true
+        XCTAssertEqual(systemAllowsMotion.morphDuration, 0, "the preference alone is enough")
+
+        let (_, operatorAsks) = makeHost(into: Reads(), reduceMotion: { true })
+        operatorAsks.animationDisabled = false
+        XCTAssertEqual(operatorAsks.morphDuration, 0, "and Reduce Motion alone is enough")
+    }
+
+    /// AC 4's "persisted", asked of the host rather than of the store: a second host on the same
+    /// preferences is what "the next launch still has no animation" means, and the write that makes it
+    /// true is one line of `didSet` that a test which only ever checks the in-memory flag would not
+    /// notice being deleted.
+    func test_thePreferenceTheOperatorSet_isWhatTheNextLaunchReads() throws {
+        let (_, first) = makeHost(into: Reads())
+        first.animationDisabled = true
+
+        let (_, relaunched) = makeHost(into: Reads())
+        XCTAssertTrue(relaunched.animationDisabled)
+        XCTAssertEqual(relaunched.morphDuration, 0, "and it is the launch's own answer, not a re-ask")
+    }
+
+    /// Invariant 14 applied to the new control: a preference is not an ask of the Board. The switch sits
+    /// in Settings beside the ones that *are* asks (remembering a Board, revoking a credential), and the
+    /// difference has to hold in the model rather than in the view's wording — a toggle that reloaded
+    /// would mean every flick of the switch sent a request.
+    func test_turningTheNoAnimationPreference_issuesNoRead() async throws {
+        try configureLive()
+        let reads = Reads()
+        let (_, host) = makeHost(into: reads)
+
+        host.animationDisabled = true
+        host.animationDisabled = false
+        await wait(seconds: 0.05)
+
+        XCTAssertEqual(reads.count, 0, "a preference is not a request")
+    }
+
+    /// AC 2's second clause, and the reason the morph is the window layer's business rather than the
+    /// read's: with a 220ms morph on its way, the click still owns the read outright. Nothing in the
+    /// host can wait for an animation — it holds no clock and no window, which is what
+    /// `SourceGuardTests` then checks from the other side.
+    func test_theClickThatOpens_ownsTheRead_whileTheMorphIsRunning() async throws {
+        try configureLive()
+        let reads = Reads()
+        let (panel, host) = makeHost(into: reads)
+        XCTAssertEqual(host.morphDuration, 0.22, "the morph is on its way")
 
         host.glanceWasClicked()
 
-        XCTAssertEqual(host.bandCorners, [.bottomLeft, .bottomRight], "so its corners stay rounded")
+        XCTAssertEqual(host.isPanelOpen, true, "the Panel is opening")
+        await waitUntil { reads.count >= 1 }
+        XCTAssertEqual(reads.count, 1, "and one click asked the Board once")
+        await waitUntil { panel.instrument != nil }
+    }
+
+    /// AC 2's last clause: a close that interrupts an opening issues nothing. The host has no notion of
+    /// a morph being in flight — the click decided the read the moment it landed — so interrupting is
+    /// the same pair of calls it always was, and this pins that the first read is not repeated and the
+    /// second gesture is not a fresh ask.
+    func test_aCloseInterruptingAnOpening_issuesNoRead() async throws {
+        try configureLive()
+        let reads = Reads()
+        let (_, host) = makeHost(into: reads)
+
+        host.glanceWasClicked()
+        host.panelWasDismissed()
+        await wait(seconds: 0.1)
+
+        XCTAssertEqual(host.isPanelOpen, false, "shut again before the shape ever finished growing")
+        XCTAssertEqual(reads.count, 1, "the opening click's read, and nothing from the interrupting close")
     }
 
     // MARK: - Helpers
@@ -336,15 +405,6 @@ final class NotchHostTests: XCTestCase {
     private static let builtIn = ScreenSurface(
         frame: CGRect(x: 0, y: 0, width: 1_728, height: 1_117),
         notch: CGRect(x: 771, y: 1_085, width: 185, height: 32),
-        isMain: true
-    )
-
-    /// A display whose cutout is wider than the Panel's column, so the band it wraps is wider than the
-    /// Panel hanging from it. No Mac Apple has shipped has a cutout this wide; the arithmetic does not
-    /// get to assume it, because the point width of a notch grows when the display is scaled.
-    private static let wideNotch = ScreenSurface(
-        frame: CGRect(x: 0, y: 0, width: 2_560, height: 1_440),
-        notch: CGRect(x: 1_170, y: 1_408, width: 220, height: 32),
         isMain: true
     )
 

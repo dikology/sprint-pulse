@@ -1,17 +1,22 @@
 import Foundation
 
-/// Where the notch host puts its two windows, as arithmetic rather than as AppKit calls (#19).
+/// Where the notch host puts its one window, as arithmetic rather than as AppKit calls (#19, #22).
 ///
 /// The host has to answer three questions every time the screens change — which screen carries the
-/// Glance, where on it the Glance hangs, and where the Panel opens below it — and all three are
-/// decidable from a description of the screens. `ScreenSurface` is that description: the whole of
-/// what `NSScreen` is asked for, so a lid closing, an external display attaching, and a notch of a
-/// different width are each one value here rather than a display configuration a test cannot make.
+/// Glance, where on it the Glance hangs, and how far down that window goes when the Panel opens — and
+/// all three are decidable from a description of the screens. `ScreenSurface` is that description: the
+/// whole of what `NSScreen` is asked for, so a lid closing, an external display attaching, and a notch
+/// of a different width are each one value here rather than a display configuration a test cannot make.
 ///
-/// Rects are in the Cocoa coordinate space `NSScreen.frame` already uses — origin at the bottom-left
-/// of the main display, y increasing upwards — which is also the space `NSWindow` is positioned in.
-/// A frame computed here goes to `setFrame(_:display:)` unchanged, and nothing in this file needs
-/// AppKit to say what it means.
+/// Since #22 the answer is two frames of *one* window rather than the frames of two windows: shut, the
+/// window is the band; open, it is the band extended downward by the Panel's own height. The morph is
+/// then only what the difference between those two rects can be — the bottom edge travelling — and
+/// saying it as arithmetic is what lets a test falsify "one shape growing" at all.
+///
+/// Rects are in the Cocoa coordinate space `NSScreen.frame` already uses — origin at the bottom-left of
+/// the main display, y increasing upwards — which is also the space `NSWindow` is positioned in. A
+/// frame computed here goes to `setFrame(_:display:)` unchanged, and nothing in this file needs AppKit
+/// to say what it means.
 enum NotchGeometry {
     /// The screen the Glance belongs on: the one with a notch, and the main screen when none has
     /// one (#19).
@@ -28,13 +33,13 @@ enum NotchGeometry {
             ?? surfaces.first
     }
 
-    /// Both windows' frames on `surface`, given the Panel's measured size.
+    /// The one window's two frames on `surface`, given the Panel's measured size.
     ///
     /// The Glance is a band wrapped around the cutout, flush with the top edge of the screen, and the
-    /// Panel hangs from its bottom edge — one column and a point of overlap, which is what lets two
-    /// windows read as one silhouette (#21 AC 2). The two kinds of screen differ in exactly two things,
-    /// which cutout the band wraps and what pins it sideways; the band's width is one arithmetic
-    /// (`NotchMetrics.columnWidth`) and its top edge is `frame.maxY` on both.
+    /// Panel is the same column continued downwards from its bottom edge — one shape, because the
+    /// window holding it is one window (#22 AC 1). The two kinds of screen differ in exactly two
+    /// things, which cutout the band wraps and what pins it sideways; the band's width is one
+    /// arithmetic (`NotchMetrics.columnWidth`) and its top edge is `frame.maxY` on both.
     static func layout(on surface: ScreenSurface, panelSize: CGSize) -> NotchLayout {
         // The cutout: the hardware where there is any, and a nominal one of this Mac's measurements
         // where there is none, so the same band is drawn in the place a notch would have been (#25 AC 2).
@@ -59,13 +64,15 @@ enum NotchGeometry {
             in: surface.frame
         )
 
-        // The Panel is centred on the band it hangs from rather than on the cutout, because the band is
-        // the surface the Operator clicked — and on a cutout wide enough to overhang the Panel's column
-        // the two are no longer the same x.
+        // The Panel's content hangs from the band's centre rather than from the cutout's, because the
+        // band is the surface the Operator clicked. Where the cutout is wider than the content's own
+        // column the two are no longer the same x — and now that the *window* is the band's column all
+        // the way down, that difference is a margin of black beside the reading rather than a step in
+        // the silhouette (#21's seam, which #22's one window retires along with its overlap).
         let panel = placed(
             at: CGPoint(
                 x: band.midX - panelSize.width / 2,
-                y: band.minY + NotchMetrics.bandOverlap - panelSize.height
+                y: band.minY - panelSize.height
             ),
             size: panelSize,
             in: surface.frame
@@ -104,21 +111,36 @@ struct ScreenSurface: Equatable {
     var hasNotch: Bool { notch != nil }
 }
 
-/// Where the two windows go.
+/// The one window's geometry: the band, the Panel's content inside it, and the two frames the window
+/// is moved between.
 struct NotchLayout: Equatable {
-    /// The Glance's band, wrapping the cutout and flush with the top edge of the screen.
+    /// The Glance's band — the cutout's strip widened into a column, flush with the top edge of the
+    /// screen. Also the click target, the figure's home, and the whole window while the Panel is shut.
     var glance: CGRect
+
+    /// Where the Panel's content sits *inside* the window once it has grown: the measured content,
+    /// centred in the band's column and starting at the band's bottom edge.
     var panel: CGRect
+
     /// `true` when the band wraps a real cutout; `false` when it is drawn at the top-centre of a
     /// screen that has none.
     var atNotch: Bool
+
+    /// The window's frame with the Panel shut.
+    var windowClosed: CGRect { glance }
+
+    /// The window's frame with the Panel open: the same column, its bottom edge moved down to the
+    /// content's. The union is exact rather than a bounding-box approximation because the content is
+    /// centred inside the band's column and abuts its bottom edge — so the only thing the two frames
+    /// disagree about is where the bottom is.
+    var windowOpen: CGRect { glance.union(panel) }
 }
 
 /// The host's own measurements: the band's wings, the cutout a screen without one is given, the
-/// Panel's column, and the overlap that joins the two surfaces.
+/// Panel's column, and how long its one shape takes to grow.
 enum NotchMetrics {
     /// The Panel's own column — the width `PanelView` fixes its content at, and the width the band
-    /// grows to so that the two windows share one silhouette (#21 AC 2). One number in one place
+    /// grows to so that the two surfaces share one silhouette (#21 AC 2). One number in one place
     /// because the two surfaces disagreeing about it *is* the seam.
     static let panelContentWidth: CGFloat = 280
 
@@ -149,31 +171,30 @@ enum NotchMetrics {
     /// The band's width for a cutout of the given width: enough column for the cutout, the figure's
     /// wing, and the minimum margin — and never less than the Panel's own column, because the two
     /// surfaces are one shape (#21 AC 2). A cutout wider than the Panel grows the band rather than
-    /// clipping the figure's wing.
+    /// clipping the figure's wing, and since #22 grows the window with it, so the reading simply gets
+    /// more black beside it.
     static func columnWidth(notchWidth: CGFloat) -> CGFloat {
         max(panelContentWidth, notchWidth + bandLeftWing + bandFigureWing)
     }
 
-    /// The band to put the Glance window at before the screens have been read: the nominal cutout's
-    /// shape, which is also the shape a screen with no notch is drawn.
+    /// The band to put the window at before the screens have been read: the nominal cutout's shape,
+    /// which is also the shape a screen with no notch is drawn.
     static let nominalBandSize = CGSize(
         width: columnWidth(notchWidth: nominalNotchWidth),
         height: nominalNotchDepth
     )
 
-    /// How far the Panel's top edge reaches *into* the band rather than sitting below it. One point of
-    /// overlap, with the band's window above the Panel's in the stacking order: two abutting rects leave
-    /// a hairline of desktop between them at a non-integer backing scale, and that hairline is the seam
-    /// #21 AC 2 is about.
-    static let bandOverlap: CGFloat = 1
-
-    /// The radius of every corner that meets the desktop, on both surfaces. One constant because they
-    /// are one silhouette: while the Panel is open the band's bottom corners are square (they are inside
-    /// the shape then — see `NotchHost.bandCorners`), so the Panel's bottom corners are the only rounded
-    /// ones on screen.
+    /// The radius of every corner that meets air. One constant because the window is one shape: its
+    /// top corners are square against the top edge of the screen and its bottom corners are the only
+    /// rounded ones, in both states and at every frame of the morph between them.
     static let cornerRadius: CGFloat = 8
 
-    /// The size to place the Panel at before its content has reported one. The width is the Panel's own
-    /// column, so only the height is a guess.
+    /// How long the shape takes to grow and shrink: ADR-0007's short structural motion, identical every
+    /// time and carrying no information. `NotchHost` answers with `0` — an instant open and close — for
+    /// Reduce Motion and for the Operator's own "no animation" preference.
+    static let structuralMorphDuration: TimeInterval = 0.22
+
+    /// The size to place the Panel's content at before it has reported one. The width is the Panel's
+    /// own column, so only the height is a guess.
     static let defaultPanelSize = CGSize(width: panelContentWidth, height: 340)
 }

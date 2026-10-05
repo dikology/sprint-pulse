@@ -8,7 +8,7 @@ import SwiftUI
 /// `PanelModel.glanceLabel` so the Glance and the Panel cannot disagree about what was read. The figure
 /// sits in the band's right wing, clear of the cutout, and the left wing stays empty: the Glance has one
 /// figure to show, and an empty wing says so (`CONTEXT.md`, Glance; ADR-0007). The click that opens the
-/// Panel belongs to the window layer (`NotchWindows`), which owns the window this view is hosted in; what
+/// Panel belongs to the window layer (`NotchWindow`), which owns the window this view is hosted in; what
 /// is left here is the thing the Operator looks at, and the accessibility of it.
 ///
 /// Both models are observed, for two different reasons: the reading arriving changes what the band
@@ -46,11 +46,6 @@ struct GlanceView: View {
             .frame(width: NotchMetrics.bandFigureRoom, alignment: .trailing)
             .padding(.trailing, NotchMetrics.bandFigureInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-            // The band is hardware: the cutout's black, square against the top edge of the screen and
-            // rounded only where it meets the desktop — which, while the Panel is open, is nowhere on
-            // its bottom edge (`host.bandCorners`). No system colour is in this surface at all, so the
-            // shape is drawn by the view rather than being a window background with an edge (ADR-0007).
-            .background(NotchShape(corners: host.bandCorners).fill(NotchPalette.surface))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(host.glanceSpokenText)
             .accessibilityAddTraits(.isButton)

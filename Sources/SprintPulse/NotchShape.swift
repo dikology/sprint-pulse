@@ -60,6 +60,20 @@ struct NotchShape: Shape {
     }
 }
 
+/// The notch host's one silhouette, drawn by the window rather than by either surface inside it (#22).
+///
+/// It fills whatever the window's current size is, which is what makes the open and the close one shape
+/// growing and shrinking: the rounded bottom edge travels down the screen and back up, and the band's
+/// figure and the Panel's reading simply stay where they were. Square against the top edge of the screen
+/// because it is flush with it, rounded only where it meets the desktop — the same rule in both states,
+/// so there is no corner to switch between them the way #21 had to switch the band's.
+struct NotchSilhouette: View {
+    var body: some View {
+        NotchShape()
+            .fill(NotchPalette.surface)
+    }
+}
+
 /// The notch host's own colours.
 ///
 /// Both surfaces are the black of the cutout whatever the system appearance, because a light surface
